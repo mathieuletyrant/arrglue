@@ -29,6 +29,9 @@ func (maintainerr) Target(env *Env, from, to *graph.Instance) (Target, string) {
 	a := jsonAPI(env.URL(nil, from), "/api/settings", "", "")
 	switch to.Kind {
 	case "jellyfin":
+		if env.URL(nil, to) == "" {
+			return nil, "arrglue cannot reach " + to.Name + " (see doctor)"
+		}
 		// Maintainerr tracks watch status for one Jellyfin user: the first administrator
 		uid, name, err := jellyfinAdmin(env.URL(nil, to), to.Secret.Value)
 		if err != nil {

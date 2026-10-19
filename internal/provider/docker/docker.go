@@ -12,6 +12,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mathieuletyrant/arrglue/internal/catalog"
 	"github.com/mathieuletyrant/arrglue/internal/graph"
@@ -200,23 +201,29 @@ func readSecret(inst *graph.Instance, app *catalog.App) {
 	if inst.Secret.Value != "" || app.Secret.SQLite == "" {
 		return
 	}
+	// several candidate databases may exist (old and new layouts): the live
+	// one is the most recently written
+	var file string
+	var newest time.Time
 	for _, p := range app.Secret.Paths {
 		h, ok := inst.ToHost(p)
 		if !ok {
 			continue
 		}
-		if _, err := os.Stat(h); err != nil {
-			continue
+		if fi, err := os.Stat(h); err == nil && fi.ModTime().After(newest) {
+			file, newest = h, fi.ModTime()
 		}
-		key, err := app.ReadSecret(h)
-		if err != nil {
-			inst.Errors = append(inst.Errors, err.Error())
-			return
-		}
-		if key != "" {
-			inst.Secret = graph.SecretRef{Source: "sqlite:" + h, Value: key}
-		}
+	}
+	if file == "" {
 		return
+	}
+	key, err := app.ReadSecret(file)
+	if err != nil {
+		inst.Errors = append(inst.Errors, err.Error())
+		return
+	}
+	if key != "" {
+		inst.Secret = graph.SecretRef{Source: "sqlite:" + file, Value: key}
 	}
 }
 
