@@ -85,7 +85,7 @@ func TestProwlarr(t *testing.T) {
 		return "http://" + to.Name + ":" + map[string]string{"radarr": "7878", "prowlarr": "9696"}[to.Kind]
 	}}
 	ctx := context.Background()
-	target := func() *Target {
+	target := func() Target {
 		t2, skip := prowlarr{}.Target(env, pro, rad)
 		if t2 == nil {
 			t.Fatal(skip)

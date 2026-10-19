@@ -15,7 +15,7 @@ func (prowlarr) Matches(from, to *graph.Instance) bool {
 	return from.Kind == "prowlarr" && (to.Kind == "radarr" || to.Kind == "sonarr")
 }
 
-func (prowlarr) Target(env *Env, from, to *graph.Instance) (*Target, string) {
+func (prowlarr) Target(env *Env, from, to *graph.Instance) (Target, string) {
 	link := from.Name + " -> " + to.Name
 	what := fmt.Sprintf("application %q", to.Name)
 	appURL, backURL := env.URL(from, to), env.URL(to, from)
@@ -44,7 +44,7 @@ func (prowlarr) Target(env *Env, from, to *graph.Instance) (*Target, string) {
 		}
 		return d
 	}
-	return &Target{API: a, Path: "/applications", Implementation: title(to.Kind), Link: link, What: what, Identity: identity, Fill: fill}, ""
+	return &servarrTarget{API: a, Path: "/applications", Implementation: title(to.Kind), Link: link, Desc: what, Identity: identity, Fill: fill}, ""
 }
 
 func sameEndpoint(a, b string) bool {

@@ -4,8 +4,9 @@ Discovers the *arr stack wherever it runs, works out how each app can reach the
 others, and wires them together through their APIs. Spec: [SPEC.md](SPEC.md).
 
 Status: roadmap step 3 — `scan` / `doctor` (read-only: discovery, per-pair reachability,
-path / hardlink checks) and `plan` / `apply` (connectors: prowlarr → radarr/sonarr,
-radarr/sonarr → transmission + remote path mapping). Every object arrglue creates is
+path / hardlink checks, links tested by the apps themselves) and `plan` / `apply`
+(connectors: prowlarr → radarr/sonarr, radarr/sonarr → transmission + remote path
+mapping, seerr → radarr/sonarr/jellyfin). Every object arrglue creates is
 tagged `arrglue`; equivalent objects made by hand are left alone unless `-adopt`.
 Catalog covers radarr, sonarr, prowlarr, transmission, jellyfin, seerr (jellyseerr/overseerr).
 

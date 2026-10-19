@@ -20,6 +20,12 @@ import (
 
 const Tag = "arrglue"
 
+// Pending is a Test error that is a warning, not a failure: the link cannot
+// be configured yet for a reason the user has to act on.
+type Pending string
+
+func (p Pending) Error() string { return string(p) }
+
 // Env is what connectors need from the engine: resolved URLs and directories.
 type Env struct {
 	Cat *catalog.Catalog
@@ -41,23 +47,34 @@ type Change struct {
 type Connector interface {
 	Matches(from, to *graph.Instance) bool
 	// Target describes the object to maintain in `from`, or a reason to skip.
-	Target(env *Env, from, to *graph.Instance) (*Target, string)
+	Target(env *Env, from, to *graph.Instance) (Target, string)
 }
 
-// Target is one Servarr-style object (download client, application...) that
-// a connector maintains in the caller's API.
-type Target struct {
+// Target is one object a connector maintains in the caller's API.
+type Target interface {
+	What() string
+	Plan(ctx context.Context, adopt bool) ([]Change, error)
+	Test(ctx context.Context) (found bool, err error) // ask the caller to test the existing object
+}
+
+var All = []Connector{prowlarr{}, downloadClient{}, seerr{}}
+
+// servarrTarget is a Servarr-style object (download client, application...):
+// {implementation, fields: [{name, value}], tags}, with /schema and /test.
+type servarrTarget struct {
 	API            api
 	Path           string // collection path, e.g. "/applications"
 	Implementation string
-	Link, What     string
+	Link, Desc     string
 	Identity       func(o obj) bool                            // is this existing object ours (regardless of tag)?
 	Fill           func(o obj, force bool) []string            // set desired fields, return diff lines
 	Extra          func(ctx context.Context) ([]Change, error) // dependent objects (remote path mappings), optional
 }
 
+func (t *servarrTarget) What() string { return t.Desc }
+
 // Plan computes the changes for a target: the main object, then extras.
-func (t *Target) Plan(ctx context.Context, adopt bool) ([]Change, error) {
+func (t *servarrTarget) Plan(ctx context.Context, adopt bool) ([]Change, error) {
 	ch, err := t.upsert(ctx, adopt)
 	if err != nil || t.Extra == nil {
 		return ch, err
@@ -68,7 +85,7 @@ func (t *Target) Plan(ctx context.Context, adopt bool) ([]Change, error) {
 
 // Test asks the caller's API to test the existing object (connection + key).
 // found=false when the object does not exist yet.
-func (t *Target) Test(ctx context.Context) (found bool, err error) {
+func (t *servarrTarget) Test(ctx context.Context) (found bool, err error) {
 	o, err := t.find(ctx)
 	if err != nil || o == nil {
 		return false, err
@@ -76,7 +93,7 @@ func (t *Target) Test(ctx context.Context) (found bool, err error) {
 	return true, t.testObj(ctx, o)
 }
 
-func (t *Target) testObj(ctx context.Context, o obj) error {
+func (t *servarrTarget) testObj(ctx context.Context, o obj) error {
 	var raw json.RawMessage // success: the object; 400: a list of validation failures
 	err := t.API.do(ctx, "POST", t.Path+"/test", o, &raw)
 	var failures []struct{ ErrorMessage string }
@@ -90,7 +107,7 @@ func (t *Target) testObj(ctx context.Context, o obj) error {
 	return err
 }
 
-func (t *Target) find(ctx context.Context) (obj, error) {
+func (t *servarrTarget) find(ctx context.Context) (obj, error) {
 	var existing []obj
 	if err := t.API.do(ctx, "GET", t.Path, nil, &existing); err != nil {
 		return nil, err
@@ -102,8 +119,6 @@ func (t *Target) find(ctx context.Context) (obj, error) {
 	}
 	return nil, nil
 }
-
-var All = []Connector{prowlarr{}, downloadClient{}}
 
 // obj is a Servarr API object: {id, name, implementation, fields: [{name, value}], tags: [...]}.
 type obj map[string]any
@@ -246,8 +261,8 @@ func (a api) schema(ctx context.Context, path, implementation string) (obj, erro
 // upsert is the shared plan logic: find an existing object by identity,
 // then noop / update / skip (unmanaged) / create. A managed object that fails
 // its API test gets all desired fields re-sent (secrets are masked on read).
-func (t *Target) upsert(ctx context.Context, adopt bool) ([]Change, error) {
-	a, link, what := t.API, t.Link, t.What
+func (t *servarrTarget) upsert(ctx context.Context, adopt bool) ([]Change, error) {
+	a, link, what := t.API, t.Link, t.Desc
 	o, err := t.find(ctx)
 	if err != nil {
 		return nil, err

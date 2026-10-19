@@ -13,3 +13,5 @@ health:
   path: /api/v1/status
   auth: { header: X-Api-Key }
   version_field: version
+api:
+  versions: [v1]

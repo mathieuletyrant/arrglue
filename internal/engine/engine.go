@@ -3,6 +3,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/mathieuletyrant/arrglue/internal/catalog"
@@ -58,15 +59,18 @@ func Test(ctx context.Context, env *connector.Env, cat *catalog.Catalog, insts [
 				continue
 			}
 			found, err := t.Test(ctx)
+			var pending connector.Pending
 			switch {
+			case errors.As(err, &pending):
+				out = append(out, TestResult{"WARN", link, "-", string(pending)})
 			case err != nil && found:
-				out = append(out, TestResult{"ERROR", link, t.What, "fails its own test: " + err.Error()})
+				out = append(out, TestResult{"ERROR", link, t.What(), "fails its own test: " + err.Error()})
 			case err != nil:
-				out = append(out, TestResult{"ERROR", link, t.What, err.Error()})
+				out = append(out, TestResult{"ERROR", link, t.What(), err.Error()})
 			case !found:
-				out = append(out, TestResult{"WARN", link, "-", "not configured yet (run plan)"})
+				out = append(out, TestResult{"WARN", link, "-", "not configured yet (run plan to see why or fix it)"})
 			default:
-				out = append(out, TestResult{"OK", link, t.What, "tested by " + from.Name + ": connection and key OK"})
+				out = append(out, TestResult{"OK", link, t.What(), "tested by " + from.Name + ": connection and key OK"})
 			}
 		}
 	}

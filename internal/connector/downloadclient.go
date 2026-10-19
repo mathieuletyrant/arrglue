@@ -18,7 +18,7 @@ func (downloadClient) Matches(from, to *graph.Instance) bool {
 	return (from.Kind == "radarr" || from.Kind == "sonarr") && to.Kind == "transmission"
 }
 
-func (downloadClient) Target(env *Env, from, to *graph.Instance) (*Target, string) {
+func (downloadClient) Target(env *Env, from, to *graph.Instance) (Target, string) {
 	link := from.Name + " -> " + to.Name
 	what := fmt.Sprintf("download client %q", to.Name)
 	clientURL := env.URL(from, to)
@@ -58,7 +58,7 @@ func (downloadClient) Target(env *Env, from, to *graph.Instance) (*Target, strin
 		}
 		return d
 	}
-	t := &Target{API: a, Path: "/downloadclient", Implementation: "Transmission", Link: link, What: what, Identity: identity, Fill: fill}
+	t := &servarrTarget{API: a, Path: "/downloadclient", Implementation: "Transmission", Link: link, Desc: what, Identity: identity, Fill: fill}
 	t.Extra = func(ctx context.Context) ([]Change, error) { return pathMappings(ctx, a, env, from, to, host, link) }
 	return t, ""
 }
