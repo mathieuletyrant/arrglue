@@ -154,22 +154,31 @@ func (a *App) ReadConfig(file string) (map[string]string, error) {
 	return out, nil
 }
 
-// ReadSecret runs the catalog's SQLite query against a copy-safe, read-only
-// view of the database (immutable: the app may hold it open in WAL mode).
-func (a *App) ReadSecret(file string) (string, error) {
+// ReadSecrets runs the catalog's SQLite query against a read-only view of the
+// database (immutable: the app may hold it open in WAL mode) and returns every
+// key it yields, best first. The caller keeps the one the app accepts.
+func (a *App) ReadSecrets(file string) ([]string, error) {
 	db, err := sql.Open("sqlite", "file:"+file+"?mode=ro&immutable=1")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer db.Close()
-	var key sql.NullString
-	if err := db.QueryRow(a.Secret.SQLite).Scan(&key); err != nil {
-		if err == sql.ErrNoRows {
-			return "", nil
-		}
-		return "", fmt.Errorf("%s: %w", file, err)
+	rows, err := db.Query(a.Secret.SQLite)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	return key.String, nil
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var key sql.NullString
+		if err := rows.Scan(&key); err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		if key.String != "" {
+			keys = append(keys, key.String)
+		}
+	}
+	return keys, rows.Err()
 }
 
 func parse(format string, b []byte) (any, error) {

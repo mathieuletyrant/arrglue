@@ -196,35 +196,46 @@ func (c *Client) env(ctx context.Context, id, name string) string {
 	return ""
 }
 
-// readSecret fills the key from the app's database when the config had none.
+// readSecret fills the key from the app's database(s) when the config had
+// none. Several candidate databases may exist (old and new layouts, stale
+// copies left by migrations): every key found is kept as a candidate, best
+// first (newest database first), and the health probe promotes the one the
+// app actually accepts.
 func readSecret(inst *graph.Instance, app *catalog.App) {
 	if inst.Secret.Value != "" || app.Secret.SQLite == "" {
 		return
 	}
-	// several candidate databases may exist (old and new layouts, migrations
-	// leaving stale copies): ask each one, keep the most recently written answer
-	var newest time.Time
-	var lastErr error
+	type db struct {
+		file string
+		mod  time.Time
+	}
+	var dbs []db
 	for _, p := range app.Secret.Paths {
-		h, ok := inst.ToHost(p)
-		if !ok {
-			continue
+		if h, ok := inst.ToHost(p); ok {
+			if fi, err := os.Stat(h); err == nil {
+				dbs = append(dbs, db{h, fi.ModTime()})
+			}
 		}
-		fi, err := os.Stat(h)
-		if err != nil {
-			continue
-		}
-		key, err := app.ReadSecret(h)
+	}
+	sort.Slice(dbs, func(i, j int) bool { return dbs[i].mod.After(dbs[j].mod) })
+	var lastErr error
+	seen := map[string]bool{}
+	for _, d := range dbs {
+		keys, err := app.ReadSecrets(d.file)
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		if key != "" && fi.ModTime().After(newest) {
-			newest = fi.ModTime()
-			inst.Secret = graph.SecretRef{Source: "sqlite:" + h, Value: key}
+		for _, k := range keys {
+			if !seen[k] {
+				seen[k] = true
+				inst.Candidates = append(inst.Candidates, graph.SecretRef{Source: "sqlite:" + d.file, Value: k})
+			}
 		}
 	}
-	if inst.Secret.Value == "" && lastErr != nil {
+	if len(inst.Candidates) > 0 {
+		inst.Secret, inst.Candidates = inst.Candidates[0], inst.Candidates[1:]
+	} else if lastErr != nil {
 		inst.Errors = append(inst.Errors, lastErr.Error())
 	}
 }

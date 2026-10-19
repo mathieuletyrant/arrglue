@@ -17,6 +17,8 @@ type Instance struct {
 	Config     map[string]string // catalog fields found in config (secrets removed)
 	ConfigFile string            // host path of the config file that was read, "" if none
 	Secret     SecretRef
+	// Candidates: other keys found on disk; the health probe promotes the one the app accepts.
+	Candidates []SecretRef `json:"-" yaml:"-"`
 	Labels     map[string]string
 	Errors     []string // discovery problems (config unreadable, ...)
 }

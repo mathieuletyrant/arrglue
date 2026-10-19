@@ -130,15 +130,24 @@ func Probe(ctx context.Context, base string, app *catalog.App, key string) (stri
 	return "", nil
 }
 
-// Self probes `to` from arrglue's own vantage (self) and returns the working base URL.
+// Self probes `to` from arrglue's own vantage (self) and returns the working
+// base URL. When several keys were found on disk, the one the app accepts
+// becomes to.Secret.
 func Self(ctx context.Context, self, to *graph.Instance, app *catalog.App) (url, version string, err error) {
 	cands := Candidates(self, to, app)
 	if len(cands) == 0 {
 		return "", "", fmt.Errorf("unverified: no route from arrglue (networks %v) to %s (networks %v, no published port)", self.Networks, to.Name, to.Networks)
 	}
+	keys := append([]graph.SecretRef{to.Secret}, to.Candidates...)
 	for _, c := range cands {
-		if version, err = Probe(ctx, c, app, to.Secret.Value); err == nil {
-			return c, version, nil
+		for _, k := range keys {
+			if version, err = Probe(ctx, c, app, k.Value); err == nil {
+				to.Secret = k
+				return c, version, nil
+			}
+			if !strings.Contains(err.Error(), "401") && !strings.Contains(err.Error(), "403") {
+				break // not an auth problem: no point trying other keys on this URL
+			}
 		}
 	}
 	return "", "", err
