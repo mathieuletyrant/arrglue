@@ -92,6 +92,14 @@ deploy/dev/umbrel.sh scan
 deploy/dev/umbrel.sh doctor
 ```
 
+## As an Umbrel app
+
+Packaged in [Mathieu's community app store](https://github.com/mathieuletyrant/umbrel-community-app-store)
+as `mathieu-arrglue`: `serve` behind Umbrel's login, Docker API through a read-only socket
+proxy, the Umbrel root mounted read-only, `ARRGLUE_TOKEN` = the app's password, secrets in
+`~/umbrel/app-data/mathieu-arrglue/data/secrets.yaml`. Writes still go through
+`docker exec mathieu-arrglue_server_1 /arrglue apply …` from the Umbrel terminal.
+
 ## Testing on a real Umbrel
 
 Every push to `main` publishes `ghcr.io/mathieuletyrant/arrglue:latest` (amd64 + arm64).
