@@ -12,7 +12,11 @@ config:
   fields:
     port: /NetworkConfiguration/InternalHttpPort
     url_base: /NetworkConfiguration/BaseUrl
-# no api_key on disk: keys live in jellyfin.db (ApiKeys table) -> read later via sqlite, or manual
+# the api key lives in jellyfin.db: any key works, one named "arrglue" is preferred
+secret:
+  paths: [/config/data/data/jellyfin.db, /config/data/jellyfin.db, /var/lib/jellyfin/data/jellyfin.db]
+  sqlite: SELECT AccessToken FROM ApiKeys ORDER BY (Name = 'arrglue') DESC, Id LIMIT 1
 health:
   path: /System/Info/Public
+  auth: { header: X-Emby-Token }
   version_field: Version

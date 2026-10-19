@@ -4,6 +4,7 @@ package catalog
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	embedded "github.com/mathieuletyrant/arrglue/catalog"
 
 	"gopkg.in/yaml.v3"
+	_ "modernc.org/sqlite"
 )
 
 type App struct {
@@ -34,6 +36,11 @@ type App struct {
 		Fields   map[string]string `yaml:"fields"`   // name -> /path/in/tree
 		Defaults map[string]string `yaml:"defaults"` // used when the config cannot be read
 	} `yaml:"config"`
+	// Secret: where to find the API key when it is not in the config file.
+	Secret struct {
+		Paths  []string `yaml:"paths"`  // app-side paths of a SQLite database
+		SQLite string   `yaml:"sqlite"` // query returning the key in its first column
+	} `yaml:"secret"`
 	Inject struct {
 		Env map[string]string `yaml:"env"`
 	} `yaml:"inject"`
@@ -131,6 +138,24 @@ func (a *App) ReadConfig(file string) (map[string]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// ReadSecret runs the catalog's SQLite query against a copy-safe, read-only
+// view of the database (immutable: the app may hold it open in WAL mode).
+func (a *App) ReadSecret(file string) (string, error) {
+	db, err := sql.Open("sqlite", "file:"+file+"?mode=ro&immutable=1")
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+	var key string
+	if err := db.QueryRow(a.Secret.SQLite).Scan(&key); err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", fmt.Errorf("%s: %w", file, err)
+	}
+	return key, nil
 }
 
 func parse(format string, b []byte) (any, error) {

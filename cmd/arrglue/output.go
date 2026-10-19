@@ -81,30 +81,47 @@ func printScan(insts []graph.Instance) {
 	table(rows)
 }
 
-// printDoctor prints APPS / ROUTES / PATHS / LINKS and returns the error count.
-func printDoctor(ctx context.Context, st *state) int {
-	fmt.Printf("arrglue runs as %s on %s\n", st.self.Name, strings.Join(st.self.Networks, ","))
-	sections := []struct{ name, title string }{
-		{"APPS", "discovered apps, as reached by arrglue"},
-		{"ROUTES", "which app can call which, and with what URL"},
-		{"PATHS", "download dirs vs library folders, hardlinks"},
-		{"LINKS", "what the apps have configured, tested by the apps themselves"},
+// Report is the doctor's result: sections of leveled rows.
+type Report struct {
+	Self     string    `json:"self"`
+	Sections []Section `json:"sections"`
+	Errors   int       `json:"errors"`
+	Warnings int       `json:"warnings"`
+}
+
+type Section struct {
+	Name  string `json:"name"`
+	Title string `json:"title"`
+	Rows  []Row  `json:"rows"`
+}
+
+type Row struct {
+	Level string   `json:"level"` // OK | WARN | ERROR
+	Cols  []string `json:"cols"`
+}
+
+// report runs the doctor checks: APPS / ROUTES / PATHS / LINKS.
+func report(ctx context.Context, st *state) *Report {
+	rep := &Report{Self: st.self.Name + " on " + strings.Join(st.self.Networks, ",")}
+	rep.Sections = []Section{
+		{Name: "APPS", Title: "discovered apps, as reached by arrglue"},
+		{Name: "ROUTES", Title: "which app can call which, and with what URL"},
+		{Name: "PATHS", Title: "download dirs vs library folders, hardlinks"},
+		{Name: "LINKS", Title: "what the apps have configured, tested by the apps themselves"},
 	}
-	rows := map[string][][]string{}
-	errs, warns := 0, 0
-	add := func(section, level string, cols ...string) {
+	add := func(section int, level string, cols ...string) {
 		switch level {
 		case "ERROR":
-			errs++
+			rep.Errors++
 		case "WARN":
-			warns++
+			rep.Warnings++
 		}
-		rows[section] = append(rows[section], append([]string{sym(level)}, cols...))
+		rep.Sections[section].Rows = append(rep.Sections[section].Rows, Row{level, cols})
 	}
 	for i := range st.insts {
 		in := &st.insts[i]
 		key := "key -"
-		if _, wants := st.cat.Apps[in.Kind].Config.Fields["api_key"]; wants {
+		if _, wants := st.cat.Apps[in.Kind].Config.Fields["api_key"]; wants || st.cat.Apps[in.Kind].Secret.SQLite != "" {
 			key = "key ✓"
 			if in.Secret.Value == "" {
 				key = "key ✗"
@@ -112,9 +129,9 @@ func printDoctor(ctx context.Context, st *state) int {
 			}
 		}
 		if len(in.Errors) > 0 {
-			add("APPS", "ERROR", in.Name, in.Kind, or(in.Version, "-"), key, strings.Join(in.Errors, "; "))
+			add(0, "ERROR", in.Name, in.Kind, or(in.Version, "-"), key, strings.Join(in.Errors, "; "))
 		} else {
-			add("APPS", "OK", in.Name, in.Kind, or(in.Version, "-"), key, st.urls[in.ID])
+			add(0, "OK", in.Name, in.Kind, or(in.Version, "-"), key, st.urls[in.ID])
 		}
 	}
 	pairs := reach.Pairs(st.cat, st.insts)
@@ -124,18 +141,18 @@ func printDoctor(ctx context.Context, st *state) int {
 		link := from.Name + " → " + to.Name
 		switch {
 		case r.URL == "":
-			add("ROUTES", "ERROR", link, "-", r.Err)
+			add(1, "ERROR", link, "-", r.Err)
 		case r.Verified:
-			add("ROUTES", "OK", link, r.URL, "")
+			add(1, "OK", link, r.URL, "")
 		case strings.HasPrefix(r.Err, "unverified"):
-			add("ROUTES", "WARN", link, r.URL, r.Err)
+			add(1, "WARN", link, r.URL, r.Err)
 		default:
-			add("ROUTES", "ERROR", link, r.URL, r.Err)
+			add(1, "ERROR", link, r.URL, r.Err)
 		}
 	}
 	for i := range st.insts {
 		if arr := &st.insts[i]; st.cat.Apps[arr.Kind].API.RootFolders != "" && st.urls[arr.ID] != "" && len(st.dirs[arr.ID]) == 0 {
-			add("PATHS", "WARN", arr.Name, "-", "no root folder configured yet")
+			add(2, "WARN", arr.Name, "-", "no root folder configured yet")
 		}
 	}
 	for _, p := range pairs {
@@ -144,21 +161,29 @@ func printDoctor(ctx context.Context, st *state) int {
 			continue
 		}
 		for _, f := range paths.Check(arr, client, st.dirs[arr.ID], st.dirs[client.ID]) {
-			add("PATHS", f.Level, arrow(f.Scope), arrow(f.Path), f.Msg)
+			add(2, f.Level, arrow(f.Scope), arrow(f.Path), f.Msg)
 		}
 	}
 	for _, r := range engine.Test(ctx, st.env, st.cat, st.insts) {
-		add("LINKS", r.Level, arrow(r.Link), r.What, r.Msg)
+		add(3, r.Level, arrow(r.Link), r.What, r.Msg)
 	}
-	for _, s := range sections {
-		if len(rows[s.name]) == 0 {
+	return rep
+}
+
+func printDoctor(rep *Report) {
+	fmt.Printf("arrglue runs as %s\n", rep.Self)
+	for _, s := range rep.Sections {
+		if len(s.Rows) == 0 {
 			continue
 		}
-		fmt.Printf("\n%s  %s\n", bold(s.name), s.title)
-		table(rows[s.name])
+		fmt.Printf("\n%s  %s\n", bold(s.Name), s.Title)
+		var rows [][]string
+		for _, r := range s.Rows {
+			rows = append(rows, append([]string{sym(r.Level)}, r.Cols...))
+		}
+		table(rows)
 	}
-	fmt.Printf("\n%d error(s), %d warning(s)\n", errs, warns)
-	return errs
+	fmt.Printf("\n%d error(s), %d warning(s)\n", rep.Errors, rep.Warnings)
 }
 
 // printPlan groups changes Terraform-style and returns how many will write.

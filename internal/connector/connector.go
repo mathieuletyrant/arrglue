@@ -57,7 +57,7 @@ type Target interface {
 	Test(ctx context.Context) (found bool, err error) // ask the caller to test the existing object
 }
 
-var All = []Connector{prowlarr{}, downloadClient{}, seerr{}}
+var All = []Connector{prowlarr{}, downloadClient{}, seerr{}, mediaNotify{}}
 
 // servarrTarget is a Servarr-style object (download client, application...):
 // {implementation, fields: [{name, value}], tags}, with /schema and /test.

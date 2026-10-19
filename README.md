@@ -3,10 +3,11 @@
 Discovers the *arr stack wherever it runs, works out how each app can reach the
 others, and wires them together through their APIs. Spec: [SPEC.md](SPEC.md).
 
-Status: roadmap step 3 — `scan` / `doctor` (read-only: discovery, per-pair reachability,
-path / hardlink checks, links tested by the apps themselves) and `plan` / `apply`
+Status: roadmap step 4 — `scan` / `doctor` (read-only: discovery, per-pair reachability,
+path / hardlink checks, links tested by the apps themselves), `plan` / `apply`
 (connectors: prowlarr → radarr/sonarr, radarr/sonarr → transmission + remote path
-mapping, seerr → radarr/sonarr/jellyfin). Every object arrglue creates is
+mapping, seerr → radarr/sonarr/jellyfin, radarr/sonarr → jellyfin library refresh)
+and `serve` (daemon + registry API). Every object arrglue creates is
 tagged `arrglue`; equivalent objects made by hand are left alone unless `-adopt`.
 Catalog covers radarr, sonarr, prowlarr, transmission, jellyfin, seerr (jellyseerr/overseerr).
 
@@ -16,7 +17,21 @@ go run ./cmd/arrglue scan     # local Docker socket (DOCKER_HOST honoured); -jso
 go run ./cmd/arrglue doctor   # APPS / ROUTES / PATHS / LINKS sections, exit 1 on any error
 go run ./cmd/arrglue plan     # Terraform-style diff of the links, writes nothing
 go run ./cmd/arrglue apply    # asks before writing (--yes to skip, --adopt to take over hand-made objects)
+go run ./cmd/arrglue serve    # daemon: rescans on Docker events and every 15 min, serves the registry
 ```
+
+## Registry API (`serve`)
+
+| Endpoint | Returns |
+|---|---|
+| `GET /v1/services` | discovered apps and the URL arrglue reaches them at |
+| `GET /v1/services/{id-or-name}?for=<caller>` | the URL *that caller* should use, verified or not |
+| `GET /v1/doctor`, `GET /v1/plan` | last doctor report and plan, as JSON |
+| `GET /v1/status`, `GET /healthz` | last cycle time and counts |
+
+The API key of a service is only included when the request carries
+`Authorization: Bearer $ARRGLUE_TOKEN`. Nothing is written unless `--auto-apply`.
+Keep the port on your internal network: arrglue holds every key of the stack.
 
 ## Test beds
 
@@ -65,6 +80,16 @@ docker run --rm --pull always --network umbrel_main_network \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v /home/umbrel/umbrel:/home/umbrel/umbrel:ro \
   ghcr.io/mathieuletyrant/arrglue doctor
+```
+
+As a daemon (registry on port 8787 of the Umbrel, keys only with the token):
+
+```sh
+docker run -d --name arrglue --restart unless-stopped --network umbrel_main_network \
+  -p 8787:8787 -e ARRGLUE_TOKEN=change-me \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /home/umbrel/umbrel:/home/umbrel/umbrel:ro \
+  ghcr.io/mathieuletyrant/arrglue serve
 ```
 
 With SSH access instead: `deploy/dev/remote.sh doctor` (cross-compiles and runs the same thing over `ssh umbrel@umbrel.local`).

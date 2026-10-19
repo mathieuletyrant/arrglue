@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -44,7 +46,9 @@ func main() {
 		if err != nil {
 			return err
 		}
-		if errs := printDoctor(cmd.Context(), st); errs > 0 {
+		rep := report(cmd.Context(), st)
+		printDoctor(rep)
+		if rep.Errors > 0 {
 			os.Exit(1)
 		}
 		return nil
@@ -102,9 +106,9 @@ func main() {
 	}
 	apply.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 
-	root.AddCommand(scan, doctor, plan, apply)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
+	root.AddCommand(scan, doctor, plan, apply, serveCmd())
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	if err := root.ExecuteContext(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "arrglue:", err)
 		os.Exit(1)
@@ -123,6 +127,8 @@ type state struct {
 }
 
 func load(ctx context.Context, withDirs bool) (*state, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
 	cat, err := catalog.Load(catDir)
 	if err != nil {
 		return nil, err
@@ -152,7 +158,7 @@ func load(ctx context.Context, withDirs bool) (*state, error) {
 		if from == nil {
 			return st.urls[to.ID]
 		}
-		return reach.Check(ctx, st.self, from, to, cat.Apps[to.Kind]).URL
+		return reach.Check(context.WithoutCancel(ctx), st.self, from, to, cat.Apps[to.Kind]).URL
 	}}
 	return st, nil
 }

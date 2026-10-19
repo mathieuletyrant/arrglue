@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -122,6 +123,7 @@ func (c *Client) Discover(ctx context.Context, cat *catalog.Catalog) ([]graph.In
 			inst.Mounts = append(inst.Mounts, graph.Mount{App: m.Destination, Host: m.Source})
 		}
 		readConfig(&inst, app)
+		readSecret(&inst, app)
 		for k, v := range app.Config.Defaults {
 			if inst.Config[k] == "" {
 				inst.Config[k] = v
@@ -162,6 +164,60 @@ func readConfig(inst *graph.Instance, app *catalog.App) {
 		inst.Secret = graph.SecretRef{Source: "file:" + f + "#api_key", Value: k}
 	}
 	inst.Config = fields
+}
+
+// readSecret fills the key from the app's database when the config had none.
+func readSecret(inst *graph.Instance, app *catalog.App) {
+	if inst.Secret.Value != "" || app.Secret.SQLite == "" {
+		return
+	}
+	for _, p := range app.Secret.Paths {
+		h, ok := inst.ToHost(p)
+		if !ok {
+			continue
+		}
+		if _, err := os.Stat(h); err != nil {
+			continue
+		}
+		key, err := app.ReadSecret(h)
+		if err != nil {
+			inst.Errors = append(inst.Errors, err.Error())
+			return
+		}
+		if key != "" {
+			inst.Secret = graph.SecretRef{Source: "sqlite:" + h, Value: key}
+		}
+		return
+	}
+}
+
+// Events streams container/network event actions ("start", "die",
+// "connect"...) until ctx ends. Each value is a hint to rediscover.
+func (c *Client) Events(ctx context.Context) (<-chan string, error) {
+	q := url.Values{"filters": {`{"type":{"container":true,"network":true}}`}}
+	req, _ := http.NewRequestWithContext(ctx, "GET", c.Base+"/events?"+q.Encode(), nil)
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("docker events: %w", err)
+	}
+	ch := make(chan string, 16)
+	go func() {
+		defer res.Body.Close()
+		defer close(ch)
+		dec := json.NewDecoder(res.Body)
+		for {
+			var ev struct{ Action string }
+			if err := dec.Decode(&ev); err != nil {
+				return
+			}
+			select {
+			case ch <- ev.Action:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch, nil
 }
 
 // Self describes arrglue's own vantage point: the container it runs in (found
