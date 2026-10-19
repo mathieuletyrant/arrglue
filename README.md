@@ -1,47 +1,112 @@
 # arrglue
 
-Discovers the *arr stack wherever it runs, works out how each app can reach the
-others, and wires them together through their APIs. Spec: [SPEC.md](SPEC.md).
+**Discovers your *arr stack, checks how the apps reach each other, and wires them together
+through their own APIs.** Read-only by default, Terraform-style `plan` / `apply` when you want it
+to write, and a registry other tools can ask for URLs and keys.
 
-Status: roadmap step 4 — `scan` / `doctor` (read-only: discovery, per-pair reachability,
-path / hardlink checks, links tested by the apps themselves), `plan` / `apply`
-(connectors: prowlarr → radarr/sonarr, radarr/sonarr → transmission + remote path
-mapping, seerr → radarr/sonarr/jellyfin, radarr/sonarr → jellyfin library refresh)
-and `serve` (daemon + registry API). Every object arrglue creates is
-tagged `arrglue`; equivalent objects made by hand are left alone unless `-adopt`.
-Catalog covers radarr, sonarr, prowlarr, transmission, jellyfin, seerr (jellyseerr/overseerr),
-cleanuparr, maintainerr, healarr, spotarr and cross-seed.
+Every *arr setup is the same chore: for each pair of apps, find the right URL *from the caller's
+point of view*, the callee's API key, and the matching file paths. arrglue reads all three from
+the running containers and their config files, then asks the apps themselves to test what they
+have configured.
 
-```sh
-go test ./...                 # replays an Umbrel-shaped docker API fixture, no Docker needed
-go run ./cmd/arrglue scan     # local Docker socket (DOCKER_HOST honoured); -json for machine output
-go run ./cmd/arrglue doctor   # APPS / ROUTES / PATHS / LINKS sections, exit 1 on any error
-go run ./cmd/arrglue plan     # Terraform-style diff of the links, writes nothing
-go run ./cmd/arrglue apply    # asks before writing (--yes to skip, --adopt to take over hand-made objects)
-go run ./cmd/arrglue serve    # daemon: rescans on Docker events and every 15 min, serves the registry
+```
+APPS    discovered apps, as reached by arrglue
+  ✓  radarr_server_1        radarr        6.4.4.10685  key ✓  http://radarr_server_1:7878
+ROUTES  which app can call which, and with what URL
+  ✓  prowlarr_server_1 → radarr_server_1   http://radarr_server_1:7878
+PATHS   download dirs vs library folders, hardlinks
+  ✓  radarr_server_1   /downloads/movies ← /downloads/complete   hardlinks possible
+LINKS   what the apps have configured, tested by the apps themselves
+  ✓  prowlarr_server_1 → radarr_server_1   application "radarr_server_1"   tested by prowlarr_server_1: connection and key OK
 ```
 
-## Connectors
+## What it does
 
-| From → to | Object | Ownership |
+- **scan**: lists the apps found on the Docker host: kind, version, networks, ports, whether a key was read.
+- **doctor**: four checks, nothing written. Apps reachable with their key; a URL per caller → callee
+  pair (same Docker network, published port, host gateway…); download dirs vs library folders, with
+  the hardlink verdict (same filesystem, same mount); and every configured link, tested by the app
+  that holds it (Prowlarr tests its applications, Radarr its download client…).
+- **plan / apply**: computes the links the apps should have, shows the diff, writes through the APIs
+  after confirmation. Objects arrglue creates carry an `arrglue` tag or `[arrglue]` prefix; what you
+  set up by hand is reported and left alone unless `--adopt`. A stale key is detected by the app's
+  own test and re-sent.
+- **serve**: daemon that rescans on Docker events and on a timer, with a web page and a JSON
+  registry: `GET /v1/services/radarr_server_1?for=prowlarr_server_1` answers with the URL that
+  caller should use, and the key for the bearer of `ARRGLUE_TOKEN`.
+
+## Apps covered
+
+| App | Read | Links arrglue maintains |
 |---|---|---|
-| prowlarr → radarr/sonarr | application (both URLs) | `arrglue` tag |
-| radarr/sonarr → transmission | download client + remote path mapping | `arrglue` tag |
-| radarr/sonarr → jellyfin | library refresh notification | `arrglue` tag |
-| seerr → radarr/sonarr, jellyfin | servers, media server host | `[arrglue]` name prefix / slot |
-| maintainerr → radarr/sonarr, jellyfin, seerr | servers, media server (first Jellyfin admin), seerr | `[arrglue]` prefix / slot |
-| cleanuparr → radarr/sonarr, transmission | instances, download client | `[arrglue]` prefix |
-| healarr → radarr/sonarr | *arr instances | `[arrglue]` prefix |
-| spotarr → seerr, jellyfin | settings sections | slot |
-| cross-seed → prowlarr, radarr, sonarr, transmission | `config.js` arrays | **manual**: plan prints what to add |
+| Radarr, Sonarr | `config.xml` | → Transmission (download client + remote path mapping), → Jellyfin (library refresh), ↔ Prowlarr |
+| Prowlarr | `config.xml` | → Radarr, Sonarr (applications, both URLs) |
+| Transmission | `settings.json` | callee |
+| Jellyfin | `network.xml`, key in `jellyfin.db` | callee |
+| Seerr / Jellyseerr / Overseerr | `settings.json` | → Radarr, Sonarr (servers, profile and root folder picked), → Jellyfin (host) |
+| Cleanuparr | key in `users.db` | → Radarr, Sonarr (instances), → Transmission (download client) |
+| Maintainerr | API | → Radarr, Sonarr, → Jellyfin (first admin user), → Seerr |
+| Healarr | key from `--secrets` (encrypted at rest) | → Radarr, Sonarr (*arr instances) |
+| Spotarr | `API_TOKEN` env | → Seerr, → Jellyfin (settings sections) |
+| cross-seed | `config.js` | → Prowlarr (torznab per indexer), Radarr, Sonarr, Transmission: **manual**, plan prints the exact lines |
 
-A *slot* is a single-valued setting: created when empty, left alone when set by hand unless `--adopt`.
+Adding an app that only needs discovery is a YAML file in [`catalog/`](catalog/): image patterns,
+config file and fields (XML, JSON, YAML, INI or regex), where the key lives (config field, SQLite
+query, env var), health endpoint. Connectors that write are Go, in [`internal/connector/`](internal/connector/).
 
-Keys arrglue cannot read itself (Healarr encrypts its own) go in a YAML file passed with
-`--secrets` or `ARRGLUE_SECRETS`: `{<container name>: <key>}`. Apps still in their first-run
-wizard (Seerr, Cleanuparr, Healarr) are reported as pending until you finish it once.
+## Install
 
-## Registry API (`serve`)
+### Umbrel
+
+Available in [Mathieu's community app store](https://github.com/mathieuletyrant/umbrel-community-app-store)
+as **arrglue**: the daemon behind Umbrel's login on port 8797, the Docker API through a read-only
+socket proxy, the Umbrel root mounted read-only. The app's password is the registry token. Keys
+arrglue cannot read itself go in `~/umbrel/app-data/mathieu-arrglue/data/secrets.yaml`:
+
+```yaml
+mathieu-healarr_server_1: <Healarr → Config → API key>
+```
+
+To write, from Settings → Advanced → Terminal:
+
+```sh
+docker exec mathieu-arrglue_server_1 /arrglue plan
+docker exec mathieu-arrglue_server_1 /arrglue apply --adopt --yes
+```
+
+### Docker
+
+Images: `ghcr.io/mathieuletyrant/arrglue` (amd64, arm64), tagged by release and `latest`.
+Run it on the network your apps share, with their config dirs mounted read-only at the same
+paths Docker reports (so what `/containers/json` says is readable as-is):
+
+```sh
+docker run -d --name arrglue --restart unless-stopped --network <your apps' network> \
+  -p 8787:8787 -e ARRGLUE_TOKEN=change-me \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /srv/apps:/srv/apps:ro \
+  ghcr.io/mathieuletyrant/arrglue serve
+```
+
+One-off commands: same mounts, `… ghcr.io/mathieuletyrant/arrglue doctor` (or `plan`, `apply`).
+From the host instead of a container, arrglue reaches the apps through their published ports.
+
+### CLI
+
+```sh
+go install github.com/mathieuletyrant/arrglue/cmd/arrglue@latest
+arrglue scan            # --json for machine output
+arrglue doctor          # exit 1 on any error
+arrglue plan [--adopt] [--only jellyfin]
+arrglue apply [--adopt] [--yes] [--only …]
+arrglue serve [--listen :8787] [--interval 15m] [--auto-apply]
+```
+
+Flags: `--catalog <dir>` overrides catalog entries, `--secrets <file>` hands over keys
+(`{<container name>: <key>}`), `DOCKER_HOST` picks the socket or a `tcp://` proxy,
+`ARRGLUE_DEBUG=1` logs the duration of every HTTP call.
+
+## Registry API
 
 | Endpoint | Returns |
 |---|---|
@@ -51,75 +116,35 @@ wizard (Seerr, Cleanuparr, Healarr) are reported as pending until you finish it 
 | `GET /v1/doctor`, `GET /v1/plan` | last doctor report and plan, as JSON |
 | `GET /v1/status`, `GET /healthz` | last cycle time and counts |
 
-The API key of a service is only included when the request carries
-`Authorization: Bearer $ARRGLUE_TOKEN`. Nothing is written unless `--auto-apply`.
-Keep the port on your internal network: arrglue holds every key of the stack.
+The `api_key` field is only included with `Authorization: Bearer $ARRGLUE_TOKEN`. Nothing is
+written unless `serve --auto-apply`. Keep the port on your internal network: arrglue holds every
+key of the stack.
 
-## Test beds
+## How it decides
 
-### Plain Docker (bridge network, published ports, separate mounts)
+- **Routes**: a URL is only valid for a given caller. Candidates, best first: shared Docker network
+  (`http://<container>:<port>`), `127.0.0.1:<published port>` for host-mode callers, the caller's
+  bridge gateway or `host.docker.internal` for published ports. Two stacks on one host are never
+  cross-wired: pairs need a common network. arrglue verifies a route when it shares the caller's
+  vantage point (same network, or both on the host) and says *unverified* otherwise.
+- **Paths**: every mount is known, so a path seen by one app is translated to the host and to the
+  other app. Different paths for the same dir → remote path mapping; different filesystems or
+  separate mounts of the same disk → no hardlinks, said before a 50 GB copy happens.
+- **Keys**: read from config files, SQLite databases (WAL journal included, the app may hold it
+  open), container env, or your secrets file. When several keys are found, the one the app accepts
+  wins. Masked values the APIs return on read count as unchanged, unless the app's own test fails.
 
-```sh
-cd deploy/dev/docker && docker compose up -d && cd -
-go run ./cmd/arrglue doctor      # host vantage: 127.0.0.1:<published port>
-go run ./cmd/arrglue plan
-docker build -t arrglue:dev . && docker run --rm --network arr-dev_arr \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v $PWD/deploy/dev/docker/data:$PWD/deploy/dev/docker/data:ro arrglue:dev doctor   # container vantage
-```
-
-### Real umbrelOS in Docker
-
-umbrelOS runs fine inside Docker (`dockurr/umbrel`): umbreld spawns the apps as
-sibling containers on the host's Docker, on `umbrel_main_network`, with app-data
-under the `/data` mount. That is the test bed.
+## Development
 
 ```sh
-docker run -d --name umbrel-verify -p 80:80 \
-  -v ~/.umbrel-verify/data:/data -v /var/run/docker.sock:/var/run/docker.sock \
-  dockurr/umbrel:2.0.0
-# finish onboarding at http://localhost, then install apps via UI or CLI:
-docker exec -e UMBREL_DATA_DIR=/data umbrel-verify \
-  node /opt/umbreld/node_modules/.bin/tsx /opt/umbreld/source/cli.ts client apps.install.mutate --appId radarr
+go test ./...                       # unit tests replay a Docker API fixture, no Docker needed
+cd deploy/dev/docker && docker compose up -d   # plain-Docker test bed: bridge, published ports, separate mounts
+deploy/dev/umbrel.sh doctor         # against umbrelOS running in Docker (dockurr/umbrel), see deploy/dev/
 ```
 
-App containers have no published ports (Umbrel's ingress owns them), so from the
-host `scan` finds apps and reads their config but cannot probe them. Run arrglue
-inside the network instead, exactly like the future Umbrel app:
+The design is in [SPEC.md](SPEC.md). Not done yet: ephemeral per-caller probe (`--network
+container:<caller>`), native and manual providers, SQLite history with encrypted keys, MCP server.
 
-```sh
-deploy/dev/umbrel.sh scan
-deploy/dev/umbrel.sh doctor
-```
+## License
 
-## As an Umbrel app
-
-Packaged in [Mathieu's community app store](https://github.com/mathieuletyrant/umbrel-community-app-store)
-as `mathieu-arrglue`: `serve` behind Umbrel's login, Docker API through a read-only socket
-proxy, the Umbrel root mounted read-only, `ARRGLUE_TOKEN` = the app's password, secrets in
-`~/umbrel/app-data/mathieu-arrglue/data/secrets.yaml`. Writes still go through
-`docker exec mathieu-arrglue_server_1 /arrglue apply …` from the Umbrel terminal.
-
-## Testing on a real Umbrel
-
-Every push to `main` publishes `ghcr.io/mathieuletyrant/arrglue:latest` (amd64 + arm64).
-On the Umbrel, open Settings → Advanced → Terminal and run:
-
-```sh
-docker run --rm --pull always --network umbrel_main_network \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v /home/umbrel/umbrel:/home/umbrel/umbrel:ro \
-  ghcr.io/mathieuletyrant/arrglue doctor
-```
-
-As a daemon (registry on port 8787 of the Umbrel, keys only with the token):
-
-```sh
-docker run -d --name arrglue --restart unless-stopped --network umbrel_main_network \
-  -p 8787:8787 -e ARRGLUE_TOKEN=change-me \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v /home/umbrel/umbrel:/home/umbrel/umbrel:ro \
-  ghcr.io/mathieuletyrant/arrglue serve
-```
-
-With SSH access instead: `deploy/dev/remote.sh doctor` (cross-compiles and runs the same thing over `ssh umbrel@umbrel.local`).
+MIT
