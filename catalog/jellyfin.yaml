@@ -17,6 +17,7 @@ secret:
   paths: [/config/data/data/jellyfin.db, /config/data/jellyfin.db, /var/lib/jellyfin/data/jellyfin.db]
   sqlite: SELECT AccessToken FROM ApiKeys ORDER BY (Name = 'arrglue') DESC, Id LIMIT 1
 health:
-  path: /System/Info/Public
+  # authenticated on purpose: a wrong key shows up in doctor, not later in a connector
+  path: /System/Info
   auth: { header: X-Emby-Token }
   version_field: Version
