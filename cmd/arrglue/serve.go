@@ -34,6 +34,7 @@ func serveCmd() *cobra.Command {
 		}
 		go s.loop(cmd.Context(), interval)
 		mux := http.NewServeMux()
+		mux.HandleFunc("GET /{$}", s.index)
 		mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
 		mux.HandleFunc("GET /v1/status", s.status)
 		mux.HandleFunc("GET /v1/services", s.services)
@@ -138,7 +139,7 @@ func (s *server) loop(ctx context.Context, interval time.Duration) {
 }
 
 func (s *server) write(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	json.NewEncoder(w).Encode(v)
 }
 

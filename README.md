@@ -24,6 +24,7 @@ go run ./cmd/arrglue serve    # daemon: rescans on Docker events and every 15 mi
 
 | Endpoint | Returns |
 |---|---|
+| `GET /` | web page: last doctor report and plan, refreshed every minute |
 | `GET /v1/services` | discovered apps and the URL arrglue reaches them at |
 | `GET /v1/services/{id-or-name}?for=<caller>` | the URL *that caller* should use, verified or not |
 | `GET /v1/doctor`, `GET /v1/plan` | last doctor report and plan, as JSON |
