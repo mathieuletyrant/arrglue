@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -57,6 +58,19 @@ func main() {
 	}}
 
 	var adopt, yes bool
+	var only string
+	filter := func(changes []connector.Change) []connector.Change {
+		if only == "" {
+			return changes
+		}
+		var out []connector.Change
+		for _, c := range changes {
+			if strings.Contains(c.Link, only) {
+				out = append(out, c)
+			}
+		}
+		return out
+	}
 	plan := &cobra.Command{Use: "plan", Short: "Show what apply would change, Terraform-style (writes nothing)", RunE: func(cmd *cobra.Command, _ []string) error {
 		st, err := load(cmd.Context(), true)
 		if err != nil {
@@ -67,7 +81,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		printPlan(changes)
+		printPlan(filter(changes))
 		return nil
 	}}
 	apply := &cobra.Command{Use: "apply", Short: "Apply the plan through the apps' APIs, after confirmation", RunE: func(cmd *cobra.Command, _ []string) error {
@@ -80,6 +94,7 @@ func main() {
 		if err != nil {
 			return err
 		}
+		changes = filter(changes)
 		if printPlan(changes) == 0 {
 			return nil
 		}
@@ -111,6 +126,7 @@ func main() {
 	}}
 	for _, c := range []*cobra.Command{plan, apply} {
 		c.Flags().BoolVar(&adopt, "adopt", false, "take over equivalent objects created by hand (tags them arrglue)")
+		c.Flags().StringVar(&only, "only", "", "limit to links whose names contain this text, e.g. jellyfin or prowlarr->radarr")
 	}
 	apply.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 
