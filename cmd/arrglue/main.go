@@ -66,14 +66,15 @@ func main() {
 		}
 	}
 
+	env := &connector.Env{Cat: cat, Dirs: dirs, Adopt: *adopt, URL: func(from, to *graph.Instance) string {
+		if from == nil {
+			return urls[to.ID]
+		}
+		return reach.Check(ctx, self, from, to, cat.Apps[to.Kind]).URL
+	}}
+
 	switch flag.Arg(0) {
 	case "plan", "apply":
-		env := &connector.Env{Cat: cat, Dirs: dirs, Adopt: *adopt, URL: func(from, to *graph.Instance) string {
-			if from == nil {
-				return urls[to.ID]
-			}
-			return reach.Check(ctx, self, from, to, cat.Apps[to.Kind]).URL
-		}}
 		changes, err := engine.Plan(ctx, env, cat, insts)
 		fail(err)
 		todo := 0
@@ -125,48 +126,45 @@ func main() {
 		}
 		w.Flush()
 	case "doctor":
-		bad := 0
-		report := func(level, scope, msg string) {
-			if level == "ERROR" {
-				bad++
-			}
-			fmt.Printf("%-5s %s: %s\n", level, scope, msg)
-		}
-		fmt.Printf("arrglue runs as %s on networks %v\n\n", self.Name, self.Networks)
+		fmt.Printf("arrglue runs as %s on %s\n", self.Name, strings.Join(self.Networks, ","))
+		d := &doc{}
 		for i := range insts {
 			in := &insts[i]
-			for _, e := range in.Errors {
-				report("ERROR", in.ID, e)
+			key := "key -"
+			if _, wants := cat.Apps[in.Kind].Config.Fields["api_key"]; wants {
+				key = "key ✓"
+				if in.Secret.Value == "" {
+					key = "key ✗"
+				}
 			}
-			if _, wantsKey := cat.Apps[in.Kind].Config.Fields["api_key"]; wantsKey && in.Secret.Value == "" {
-				report("ERROR", in.ID, "no api key found")
+			lvl, msg := "OK", urls[in.ID]
+			if len(in.Errors) > 0 || key == "key ✗" {
+				lvl, msg = "ERROR", strings.Join(in.Errors, "; ")
+				if key == "key ✗" {
+					msg = strings.TrimPrefix("no api key found; "+msg, "; ")
+				}
 			}
-			if urls[in.ID] != "" {
-				report("OK", in.ID, in.Kind+" "+or(in.Version, "reachable")+" at "+urls[in.ID])
-			}
+			d.add("APPS", lvl, in.Name, in.Kind, or(in.Version, "-"), key, msg)
 		}
-		fmt.Println()
-		// reachability per pair (catalog links, shared network)
 		pairs := reach.Pairs(cat, insts)
 		for _, p := range pairs {
 			from, to := p[0], p[1]
 			r := reach.Check(ctx, self, from, to, cat.Apps[to.Kind])
+			arrow := from.Name + " → " + to.Name
 			switch {
 			case r.URL == "":
-				report("ERROR", from.Name+" -> "+to.Name, r.Err)
+				d.add("ROUTES", "ERROR", arrow, "-", r.Err)
 			case r.Verified:
-				report("OK", from.Name+" -> "+to.Name, r.URL)
+				d.add("ROUTES", "OK", arrow, r.URL, "")
 			case strings.HasPrefix(r.Err, "unverified"):
-				report("WARN", from.Name+" -> "+to.Name, r.URL+" ("+r.Err+")")
+				d.add("ROUTES", "WARN", arrow, r.URL, r.Err)
 			default:
-				report("ERROR", from.Name+" -> "+to.Name, r.URL+": "+r.Err)
+				d.add("ROUTES", "ERROR", arrow, r.URL, r.Err)
 			}
 		}
-		fmt.Println()
-		// paths: servarr root folders vs download client dirs
 		for i := range insts {
 			if arr := &insts[i]; cat.Apps[arr.Kind].API.RootFolders != "" && urls[arr.ID] != "" && len(dirs[arr.ID]) == 0 {
-				report("WARN", arr.ID, "no root folder configured yet")
+				d.add("PATHS", "WARN", arr.Name, "-", "no root folder configured yet")
 			}
 		}
 		for _, p := range pairs {
@@ -175,10 +173,19 @@ func main() {
 				continue
 			}
 			for _, f := range paths.Check(arr, client, dirs[arr.ID], dirs[client.ID]) {
-				report(f.Level, "paths", f.Msg)
+				d.add("PATHS", f.Level, strings.ReplaceAll(f.Scope, "<-", "←"), strings.ReplaceAll(f.Path, "<-", "←"), f.Msg)
 			}
 		}
-		if bad > 0 {
+		for _, r := range engine.Test(ctx, env, cat, insts) {
+			d.add("LINKS", r.Level, strings.ReplaceAll(r.Link, "->", "→"), r.What, r.Msg)
+		}
+		d.print(map[string]string{
+			"APPS":   "discovered apps, as reached by arrglue",
+			"ROUTES": "which app can call which, and with what URL",
+			"PATHS":  "download dirs vs library folders, hardlinks",
+			"LINKS":  "what the apps have configured, tested by the apps themselves",
+		})
+		if d.errors > 0 {
 			os.Exit(1)
 		}
 	default:
@@ -211,4 +218,40 @@ func fail(err error) {
 		fmt.Fprintln(os.Stderr, "arrglue:", err)
 		os.Exit(1)
 	}
+}
+
+// doc collects doctor findings per section and prints them aligned.
+type doc struct {
+	order         []string
+	rows          map[string][][]string
+	errors, warns int
+}
+
+func (d *doc) add(section, level string, cols ...string) {
+	if d.rows == nil {
+		d.rows = map[string][][]string{}
+	}
+	if _, ok := d.rows[section]; !ok {
+		d.order = append(d.order, section)
+	}
+	sym := map[string]string{"OK": "✓", "WARN": "!", "ERROR": "✗"}[level]
+	switch level {
+	case "ERROR":
+		d.errors++
+	case "WARN":
+		d.warns++
+	}
+	d.rows[section] = append(d.rows[section], append([]string{sym}, cols...))
+}
+
+func (d *doc) print(titles map[string]string) {
+	for _, sec := range d.order {
+		fmt.Printf("\n%s  %s\n", sec, titles[sec])
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		for _, r := range d.rows[sec] {
+			fmt.Fprintln(w, "  "+strings.Join(r, "\t"))
+		}
+		w.Flush()
+	}
+	fmt.Printf("\n%d error(s), %d warning(s)\n", d.errors, d.warns)
 }

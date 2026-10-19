@@ -145,7 +145,11 @@ func readConfig(inst *graph.Instance, app *catalog.App) {
 		}
 	}
 	if f == "" {
-		inst.Errors = append(inst.Errors, fmt.Sprintf("config not found (looked for %v through mounts %v)", app.Config.Paths, inst.Mounts))
+		where := "no mount covers " + app.Config.Paths[0]
+		if h, ok := inst.ToHost(app.Config.Paths[0]); ok {
+			where = h + " missing or not readable from here"
+		}
+		inst.Errors = append(inst.Errors, "config not found: "+where)
 		return
 	}
 	fields, err := app.ReadConfig(f)

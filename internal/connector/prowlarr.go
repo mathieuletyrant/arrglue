@@ -1,7 +1,6 @@
 package connector
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -16,15 +15,15 @@ func (prowlarr) Matches(from, to *graph.Instance) bool {
 	return from.Kind == "prowlarr" && (to.Kind == "radarr" || to.Kind == "sonarr")
 }
 
-func (prowlarr) Plan(ctx context.Context, env *Env, from, to *graph.Instance) ([]Change, error) {
+func (prowlarr) Target(env *Env, from, to *graph.Instance) (*Target, string) {
 	link := from.Name + " -> " + to.Name
-	what := fmt.Sprintf("application %s (%s) in %s", title(to.Kind), to.Name, from.Name)
+	what := fmt.Sprintf("application %q", to.Name)
 	appURL, backURL := env.URL(from, to), env.URL(to, from)
 	if appURL == "" || backURL == "" {
-		return []Change{{Link: link, Op: "skip", What: what, Detail: "no route between the two apps (see doctor)"}}, nil
+		return nil, "no route between the two apps (see doctor)"
 	}
 	if to.Secret.Value == "" {
-		return []Change{{Link: link, Op: "skip", What: what, Detail: "no api key known for " + to.Name}}, nil
+		return nil, "no api key known for " + to.Name
 	}
 	a := newAPI(env.URL(nil, from), env.Cat.Apps[from.Kind], from.Secret.Value)
 	identity := func(o obj) bool { return sameEndpoint(fmt.Sprint(o.field("baseUrl")), appURL) }
@@ -45,7 +44,7 @@ func (prowlarr) Plan(ctx context.Context, env *Env, from, to *graph.Instance) ([
 		}
 		return d
 	}
-	return upsert(ctx, a, env.Adopt, "/applications", title(to.Kind), link, what, identity, fill)
+	return &Target{API: a, Path: "/applications", Implementation: title(to.Kind), Link: link, What: what, Identity: identity, Fill: fill}, ""
 }
 
 func sameEndpoint(a, b string) bool {

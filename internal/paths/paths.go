@@ -20,7 +20,9 @@ import (
 
 type Finding struct {
 	Level string // OK | WARN | ERROR
-	Msg   string
+	Scope string // "radarr_server_1 <- transmission_server_1" or just the app
+	Path  string // the path(s) concerned, as the servarr app sees them
+	Msg   string // short verdict
 }
 
 // Dirs returns the directories an app uses, as the app sees them:
@@ -100,39 +102,41 @@ var Device = func(p string) (uint64, error) {
 // Check compares the download client's dir with each root folder of the servarr app.
 func Check(arr, client *graph.Instance, roots, downloadDirs []string) []Finding {
 	var f []Finding
+	pair := arr.Name + " <- " + client.Name
 	for _, d := range downloadDirs {
 		host, ok := client.ToHost(d)
 		if !ok {
-			f = append(f, Finding{"ERROR", fmt.Sprintf("%s download dir %s is not on a mount of %s: cannot map it to the host", client.Name, d, client.Name)})
+			f = append(f, Finding{"ERROR", pair, d, "download dir is not on a mount of " + client.Name + ": cannot map it"})
 			continue
 		}
 		seen, ok := arr.FromHost(host)
 		if !ok {
-			f = append(f, Finding{"ERROR", fmt.Sprintf("%s cannot see %s download dir %s (host %s): mount it into %s", arr.Name, client.Name, d, host, arr.Name)})
+			f = append(f, Finding{"ERROR", pair, d, fmt.Sprintf("download dir (host %s) is not visible to %s: mount it", host, arr.Name)})
 			continue
 		}
 		if seen != d {
-			f = append(f, Finding{"WARN", fmt.Sprintf("%s sees %s download dir %s as %s: remote path mapping needed (plan will add it)", arr.Name, client.Name, d, seen)})
+			f = append(f, Finding{"WARN", pair, d + " = " + seen, "same dir, different paths: remote path mapping needed (plan adds it)"})
 		} else {
-			f = append(f, Finding{"OK", fmt.Sprintf("%s and %s both see %s (host %s)", arr.Name, client.Name, d, host)})
+			f = append(f, Finding{"OK", pair, d, "download dir visible under the same path"})
 		}
 		dlDev, dlErr := Device(host)
 		for _, r := range roots {
 			rHost, ok := arr.ToHost(r)
 			if !ok {
-				f = append(f, Finding{"ERROR", fmt.Sprintf("%s root folder %s is not on a mount of %s", arr.Name, r, arr.Name)})
+				f = append(f, Finding{"ERROR", arr.Name, r, "root folder is not on a mount of " + arr.Name})
 				continue
 			}
 			rDev, rErr := Device(rHost)
+			where := r + " <- " + seen
 			switch {
 			case dlErr != nil || rErr != nil:
-				f = append(f, Finding{"WARN", fmt.Sprintf("%s root %s: cannot check hardlinks, host paths not readable from here (%s, %s)", arr.Name, r, host, rHost)})
+				f = append(f, Finding{"WARN", arr.Name, where, "cannot check hardlinks: host paths not readable from here"})
 			case dlDev != rDev:
-				f = append(f, Finding{"WARN", fmt.Sprintf("%s root %s (host %s) and downloads (host %s) are on different filesystems: no hardlinks, imports will copy", arr.Name, r, rHost, host)})
+				f = append(f, Finding{"WARN", arr.Name, where, "different filesystems: no hardlinks, imports will copy"})
 			case arr.MountFor(seen) != arr.MountFor(r):
-				f = append(f, Finding{"WARN", fmt.Sprintf("%s root %s and downloads %s are separate mounts of the same disk: no hardlinks inside the container, mount a common parent (e.g. /data)", arr.Name, r, seen)})
+				f = append(f, Finding{"WARN", arr.Name, where, "separate mounts of the same disk: no hardlinks in the container, mount a common parent (e.g. /data)"})
 			default:
-				f = append(f, Finding{"OK", fmt.Sprintf("%s root %s and downloads %s: hardlinks possible", arr.Name, r, seen)})
+				f = append(f, Finding{"OK", arr.Name, where, "hardlinks possible"})
 			}
 		}
 	}

@@ -39,7 +39,7 @@ func TestCheck(t *testing.T) {
 	// radarr sees the download dir under another path -> remote path mapping
 	sonarr := &graph.Instance{Name: "sonarr", Mounts: []graph.Mount{{App: "/data", Host: "/srv"}}}
 	f := Check(sonarr, tr, []string{"/data/tv"}, []string{"/downloads"})
-	if levels(f) != "WARN OK" || !strings.Contains(f[0].Msg, "as /data/downloads") {
+	if levels(f) != "WARN OK" || f[0].Path != "/downloads = /data/downloads" {
 		t.Errorf("remap: %+v", f)
 	}
 	// invisible

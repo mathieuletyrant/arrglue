@@ -18,15 +18,15 @@ func (downloadClient) Matches(from, to *graph.Instance) bool {
 	return (from.Kind == "radarr" || from.Kind == "sonarr") && to.Kind == "transmission"
 }
 
-func (downloadClient) Plan(ctx context.Context, env *Env, from, to *graph.Instance) ([]Change, error) {
+func (downloadClient) Target(env *Env, from, to *graph.Instance) (*Target, string) {
 	link := from.Name + " -> " + to.Name
-	what := fmt.Sprintf("download client Transmission (%s) in %s", to.Name, from.Name)
+	what := fmt.Sprintf("download client %q", to.Name)
 	clientURL := env.URL(from, to)
 	if clientURL == "" {
-		return []Change{{Link: link, Op: "skip", What: what, Detail: "no route between the two apps (see doctor)"}}, nil
+		return nil, "no route between the two apps (see doctor)"
 	}
 	if to.Config["auth_required"] == "true" {
-		return []Change{{Link: link, Op: "skip", What: what, Detail: to.Name + " requires RPC credentials and arrglue has none"}}, nil
+		return nil, to.Name + " requires RPC credentials and arrglue has none"
 	}
 	u, _ := url.Parse(clientURL)
 	host, portStr, _ := strings.Cut(u.Host, ":")
@@ -58,18 +58,21 @@ func (downloadClient) Plan(ctx context.Context, env *Env, from, to *graph.Instan
 		}
 		return d
 	}
-	changes, err := upsert(ctx, a, env.Adopt, "/downloadclient", "Transmission", link, what, identity, fill)
-	if err != nil {
-		return nil, err
-	}
-	// remote path mappings, one per download dir the two apps name differently
+	t := &Target{API: a, Path: "/downloadclient", Implementation: "Transmission", Link: link, What: what, Identity: identity, Fill: fill}
+	t.Extra = func(ctx context.Context) ([]Change, error) { return pathMappings(ctx, a, env, from, to, host, link) }
+	return t, ""
+}
+
+// pathMappings plans one remote path mapping per download dir the two apps name differently.
+func pathMappings(ctx context.Context, a api, env *Env, from, to *graph.Instance, host, link string) ([]Change, error) {
+	var changes []Change
 	for _, dir := range env.Dirs[to.ID] {
 		seen, ok := graph.Translate(to, from, dir)
 		if !ok || seen == dir {
 			continue
 		}
 		remote, local := strings.TrimSuffix(dir, "/")+"/", strings.TrimSuffix(seen, "/")+"/"
-		whatM := fmt.Sprintf("remote path mapping %s:%s -> %s in %s", host, remote, local, from.Name)
+		whatM := fmt.Sprintf("remote path mapping %s:%s -> %s", host, remote, local)
 		var maps []obj
 		if err := a.do(ctx, "GET", "/remotepathmapping", nil, &maps); err != nil {
 			return nil, err

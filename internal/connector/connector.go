@@ -40,7 +40,67 @@ type Change struct {
 
 type Connector interface {
 	Matches(from, to *graph.Instance) bool
-	Plan(ctx context.Context, env *Env, from, to *graph.Instance) ([]Change, error)
+	// Target describes the object to maintain in `from`, or a reason to skip.
+	Target(env *Env, from, to *graph.Instance) (*Target, string)
+}
+
+// Target is one Servarr-style object (download client, application...) that
+// a connector maintains in the caller's API.
+type Target struct {
+	API            api
+	Path           string // collection path, e.g. "/applications"
+	Implementation string
+	Link, What     string
+	Identity       func(o obj) bool                            // is this existing object ours (regardless of tag)?
+	Fill           func(o obj, force bool) []string            // set desired fields, return diff lines
+	Extra          func(ctx context.Context) ([]Change, error) // dependent objects (remote path mappings), optional
+}
+
+// Plan computes the changes for a target: the main object, then extras.
+func (t *Target) Plan(ctx context.Context, adopt bool) ([]Change, error) {
+	ch, err := t.upsert(ctx, adopt)
+	if err != nil || t.Extra == nil {
+		return ch, err
+	}
+	more, err := t.Extra(ctx)
+	return append(ch, more...), err
+}
+
+// Test asks the caller's API to test the existing object (connection + key).
+// found=false when the object does not exist yet.
+func (t *Target) Test(ctx context.Context) (found bool, err error) {
+	o, err := t.find(ctx)
+	if err != nil || o == nil {
+		return false, err
+	}
+	return true, t.testObj(ctx, o)
+}
+
+func (t *Target) testObj(ctx context.Context, o obj) error {
+	var raw json.RawMessage // success: the object; 400: a list of validation failures
+	err := t.API.do(ctx, "POST", t.Path+"/test", o, &raw)
+	var failures []struct{ ErrorMessage string }
+	if err != nil && json.Unmarshal(raw, &failures) == nil && len(failures) > 0 {
+		var msgs []string
+		for _, f := range failures {
+			msgs = append(msgs, f.ErrorMessage)
+		}
+		return fmt.Errorf("%s", strings.Join(msgs, "; "))
+	}
+	return err
+}
+
+func (t *Target) find(ctx context.Context) (obj, error) {
+	var existing []obj
+	if err := t.API.do(ctx, "GET", t.Path, nil, &existing); err != nil {
+		return nil, err
+	}
+	for _, o := range existing {
+		if o["implementation"] == t.Implementation && t.Identity(o) {
+			return o, nil
+		}
+	}
+	return nil, nil
 }
 
 var All = []Connector{prowlarr{}, downloadClient{}}
@@ -137,6 +197,9 @@ func (a api) do(ctx context.Context, method, path string, in, out any) error {
 	defer res.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 4<<20))
 	if res.StatusCode/100 != 2 {
+		if out != nil && res.StatusCode == 400 {
+			json.Unmarshal(b, out) // validation failures, best effort
+		}
 		return fmt.Errorf("%s %s: %s: %s", method, path, res.Status, strings.TrimSpace(string(b)))
 	}
 	if out != nil && len(b) > 0 {
@@ -181,31 +244,34 @@ func (a api) schema(ctx context.Context, path, implementation string) (obj, erro
 }
 
 // upsert is the shared plan logic: find an existing object by identity,
-// then noop / update / skip (unmanaged) / create.
-func upsert(ctx context.Context, a api, adopt bool, path, implementation string, link, what string,
-	identity func(o obj) bool, fill func(o obj, force bool) []string) ([]Change, error) {
-	var existing []obj
-	if err := a.do(ctx, "GET", path, nil, &existing); err != nil {
+// then noop / update / skip (unmanaged) / create. A managed object that fails
+// its API test gets all desired fields re-sent (secrets are masked on read).
+func (t *Target) upsert(ctx context.Context, adopt bool) ([]Change, error) {
+	a, link, what := t.API, t.Link, t.What
+	o, err := t.find(ctx)
+	if err != nil {
 		return nil, err
 	}
 	tag, err := a.tagID(ctx, false)
 	if err != nil {
 		return nil, err
 	}
-	for _, o := range existing {
-		if o["implementation"] != implementation || !identity(o) {
-			continue
-		}
-		op := "update"
+	if o != nil {
+		op, force, why := "update", false, ""
 		if !o.hasTag(tag) {
 			if !adopt {
 				return []Change{{Link: link, Op: "skip", What: what, Detail: fmt.Sprintf("%q exists but is not managed by arrglue (no %s tag); left untouched, use -adopt to take it over", o["name"], Tag)}}, nil
 			}
-			op = "adopt"
+			op, force = "adopt", true
+		} else if err := t.testObj(ctx, o); err != nil {
+			force, why = true, "  (re-sent: fails its test: "+err.Error()+")"
 		}
-		diff := fill(o, op == "adopt")
+		diff := t.Fill(o, force)
 		if op == "update" && len(diff) == 0 {
 			return []Change{{Link: link, Op: "noop", What: what}}, nil
+		}
+		if why != "" {
+			diff = append(diff, why)
 		}
 		id := strings.TrimSuffix(fmt.Sprint(o["id"]), ".0")
 		return []Change{{Link: link, Op: op, What: what, Detail: strings.Join(diff, "\n"), Apply: func(ctx context.Context) error {
@@ -217,14 +283,14 @@ func upsert(ctx context.Context, a api, adopt bool, path, implementation string,
 				ts, _ := o["tags"].([]any)
 				o["tags"] = append(ts, tag)
 			}
-			return a.do(ctx, "PUT", path+"/"+id, o, nil)
+			return a.do(ctx, "PUT", t.Path+"/"+id, o, nil)
 		}}}, nil
 	}
-	o, err := a.schema(ctx, path, implementation)
+	o, err = a.schema(ctx, t.Path, t.Implementation)
 	if err != nil {
 		return nil, err
 	}
-	diff := fill(o, true)
+	diff := t.Fill(o, true)
 	sort.Strings(diff)
 	return []Change{{Link: link, Op: "create", What: what, Detail: strings.Join(diff, "\n"), Apply: func(ctx context.Context) error {
 		tag, err := a.tagID(ctx, true)
@@ -232,7 +298,7 @@ func upsert(ctx context.Context, a api, adopt bool, path, implementation string,
 			return err
 		}
 		o["tags"] = []any{tag}
-		return a.do(ctx, "POST", path, o, nil)
+		return a.do(ctx, "POST", t.Path, o, nil)
 	}}}, nil
 }
 

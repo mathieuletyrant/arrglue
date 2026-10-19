@@ -27,6 +27,17 @@ func fakeServarr(t *testing.T, schemas map[string][]obj) (*httptest.Server, map[
 			json.NewEncoder(w).Encode(schemas[strings.TrimSuffix(p, "/schema")])
 			return
 		}
+		if strings.HasSuffix(p, "/test") { // "connection" works iff the key is radkey
+			var o obj
+			json.NewDecoder(r.Body).Decode(&o)
+			if o.field("apiKey") != "radkey" {
+				w.WriteHeader(400)
+				json.NewEncoder(w).Encode([]map[string]string{{"propertyName": "ApiKey", "errorMessage": "Unable to connect: 401"}})
+				return
+			}
+			w.Write([]byte("{}"))
+			return
+		}
 		coll, id, _ := strings.Cut(strings.TrimPrefix(p, "/"), "/")
 		switch r.Method {
 		case "GET":
@@ -74,12 +85,22 @@ func TestProwlarr(t *testing.T) {
 		return "http://" + to.Name + ":" + map[string]string{"radarr": "7878", "prowlarr": "9696"}[to.Kind]
 	}}
 	ctx := context.Background()
+	target := func() *Target {
+		t2, skip := prowlarr{}.Target(env, pro, rad)
+		if t2 == nil {
+			t.Fatal(skip)
+		}
+		return t2
+	}
 	plan := func() []Change {
-		ch, err := prowlarr{}.Plan(ctx, env, pro, rad)
+		ch, err := target().Plan(ctx, env.Adopt)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return ch
+	}
+	if found, err := target().Test(ctx); found || err != nil {
+		t.Fatalf("test before create: found=%v err=%v", found, err)
 	}
 	ch := plan()
 	if len(ch) != 1 || ch[0].Op != "create" || !strings.Contains(ch[0].Detail, "baseUrl: http://localhost:7878 -> http://radarr_server_1:7878") {
@@ -95,12 +116,18 @@ func TestProwlarr(t *testing.T) {
 	if ch := plan(); len(ch) != 1 || ch[0].Op != "noop" {
 		t.Fatalf("second plan should be noop: %+v", ch)
 	}
-	// API masks secrets on read: must not loop on updates
+	if found, err := target().Test(ctx); !found || err != nil {
+		t.Fatalf("test after create: found=%v err=%v", found, err)
+	}
+	// API masks secrets on read: must not loop on updates... unless the test fails
 	store["/applications"][0].set("apiKey", "********", true)
-	if ch := plan(); ch[0].Op != "noop" {
-		t.Fatalf("masked key should be noop: %+v", ch)
+	if ch := plan(); ch[0].Op != "update" || !strings.Contains(ch[0].Detail, "fails its test") {
+		t.Fatalf("masked key failing its test should be re-sent: %+v", ch)
 	}
 	store["/applications"][0].set("apiKey", "radkey", true)
+	if ch := plan(); ch[0].Op != "noop" {
+		t.Fatalf("working object should be noop: %+v", ch)
+	}
 	// key rotated -> update
 	rad.Secret.Value = "newkey"
 	ch = plan()
@@ -112,6 +139,9 @@ func TestProwlarr(t *testing.T) {
 	}
 	if store["/applications"][0].field("apiKey") != "newkey" {
 		t.Fatal("update not persisted")
+	}
+	if found, err := target().Test(ctx); !found || err == nil || !strings.Contains(err.Error(), "Unable to connect") {
+		t.Fatalf("test with wrong key should fail with the API message: found=%v err=%v", found, err)
 	}
 	// hand-made object without tag -> skip, unless adopting
 	store["/applications"][0]["tags"] = []any{}
