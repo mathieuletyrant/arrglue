@@ -45,34 +45,37 @@ func Plan(ctx context.Context, env *connector.Env, cat *catalog.Catalog, insts [
 type TestResult struct{ Level, Link, What, Msg string }
 
 func Test(ctx context.Context, env *connector.Env, cat *catalog.Catalog, insts []graph.Instance) []TestResult {
-	var out []TestResult
+	type job struct {
+		from, to *graph.Instance
+		c        connector.Connector
+	}
+	var jobs []job
 	for _, p := range reach.Pairs(cat, insts) {
-		from, to := p[0], p[1]
 		for _, c := range connector.All {
-			if !c.Matches(from, to) || env.URL(nil, from) == "" {
-				continue
-			}
-			t, skip := c.Target(env, from, to)
-			link := from.Name + " -> " + to.Name
-			if t == nil {
-				out = append(out, TestResult{"WARN", link, "-", skip})
-				continue
-			}
-			found, err := t.Test(ctx)
-			var pending connector.Pending
-			switch {
-			case errors.As(err, &pending):
-				out = append(out, TestResult{"WARN", link, "-", string(pending)})
-			case err != nil && found:
-				out = append(out, TestResult{"ERROR", link, t.What(), "fails its own test: " + err.Error()})
-			case err != nil:
-				out = append(out, TestResult{"ERROR", link, t.What(), err.Error()})
-			case !found:
-				out = append(out, TestResult{"WARN", link, "-", "not configured yet (run plan to see why or fix it)"})
-			default:
-				out = append(out, TestResult{"OK", link, t.What(), "tested by " + from.Name + ": connection and key OK"})
+			if c.Matches(p[0], p[1]) && env.URL(nil, p[0]) != "" {
+				jobs = append(jobs, job{p[0], p[1], c})
 			}
 		}
 	}
-	return out
+	return reach.Parallel(len(jobs), func(i int) TestResult {
+		from, to, c := jobs[i].from, jobs[i].to, jobs[i].c
+		link := from.Name + " -> " + to.Name
+		t, skip := c.Target(env, from, to)
+		if t == nil {
+			return TestResult{"WARN", link, "-", skip}
+		}
+		found, err := t.Test(ctx)
+		var pending connector.Pending
+		switch {
+		case errors.As(err, &pending):
+			return TestResult{"WARN", link, "-", string(pending)}
+		case err != nil && found:
+			return TestResult{"ERROR", link, t.What(), "fails its own test: " + err.Error()}
+		case err != nil:
+			return TestResult{"ERROR", link, t.What(), err.Error()}
+		case !found:
+			return TestResult{"WARN", link, "-", "not configured yet (run plan to see why or fix it)"}
+		}
+		return TestResult{"OK", link, t.What(), "tested by " + from.Name + ": connection and key OK"}
+	})
 }

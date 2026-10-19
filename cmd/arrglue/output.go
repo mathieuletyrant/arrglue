@@ -137,9 +137,12 @@ func report(ctx context.Context, st *state) *Report {
 		}
 	}
 	pairs := reach.Pairs(st.cat, st.insts)
-	for _, p := range pairs {
+	routes := reach.Parallel(len(pairs), func(i int) reach.Result {
+		return reach.Check(ctx, st.self, pairs[i][0], pairs[i][1], st.cat.Apps[pairs[i][1].Kind])
+	})
+	for i, p := range pairs {
 		from, to := p[0], p[1]
-		r := reach.Check(ctx, st.self, from, to, st.cat.Apps[to.Kind])
+		r := routes[i]
 		link := from.Name + " → " + to.Name
 		switch {
 		case r.URL == "":

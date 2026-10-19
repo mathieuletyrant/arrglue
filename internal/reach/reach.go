@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mathieuletyrant/arrglue/internal/catalog"
@@ -93,8 +94,29 @@ func shared(a, b []string) bool {
 	return false
 }
 
+// probe results are cached per URL+key for the duration of a run (many pairs
+// share a callee); ResetCache starts a new run.
+var cache sync.Map
+
+type probed struct {
+	version string
+	err     error
+}
+
+func ResetCache() { cache = sync.Map{} }
+
 // Probe calls the catalog health endpoint under base. Returns the version if reported.
 func Probe(ctx context.Context, base string, app *catalog.App, key string) (string, error) {
+	ck := base + "\x00" + key
+	if v, ok := cache.Load(ck); ok {
+		return v.(probed).version, v.(probed).err
+	}
+	version, err := probe(ctx, base, app, key)
+	cache.Store(ck, probed{version, err})
+	return version, err
+}
+
+func probe(ctx context.Context, base string, app *catalog.App, key string) (string, error) {
 	u := base + "/" + strings.TrimPrefix(app.Health.Path, "/")
 	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if name, value := app.AuthHeader(key); name != "" {
@@ -176,4 +198,22 @@ func Check(ctx context.Context, self, from, to *graph.Instance, app *catalog.App
 	}
 	r.Err = "unverified: arrglue does not share " + from.Name + "'s vantage point"
 	return r
+}
+
+// Parallel runs fn for i in [0,n) with at most 8 in flight, keeping results in order.
+func Parallel[T any](n int, fn func(i int) T) []T {
+	out := make([]T, n)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			out[i] = fn(i)
+		}(i)
+	}
+	wg.Wait()
+	return out
 }

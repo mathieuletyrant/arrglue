@@ -178,20 +178,28 @@ func load(ctx context.Context, withDirs bool) (*state, error) {
 		}
 	}
 	st := &state{cat: cat, insts: insts, self: cli.Self(ctx), urls: map[string]string{}, dirs: map[string][]string{}}
-	for i := range insts {
+	reach.ResetCache()
+	type probed struct {
+		url  string
+		dirs []string
+	}
+	results := reach.Parallel(len(insts), func(i int) probed {
 		in := &insts[i]
 		url, v, err := reach.Self(ctx, st.self, in, cat.Apps[in.Kind])
-		in.Version, st.urls[in.ID] = v, url
+		in.Version = v
 		if err != nil {
 			in.Errors = append(in.Errors, "health: "+err.Error())
 		}
+		var dirs []string
 		if withDirs && url != "" {
-			d, err := paths.Dirs(ctx, in, cat.Apps[in.Kind], url)
-			if err != nil {
+			if dirs, err = paths.Dirs(ctx, in, cat.Apps[in.Kind], url); err != nil {
 				in.Errors = append(in.Errors, "cannot read directories: "+err.Error())
 			}
-			st.dirs[in.ID] = d
 		}
+		return probed{url, dirs}
+	})
+	for i, r := range results {
+		st.urls[insts[i].ID], st.dirs[insts[i].ID] = r.url, r.dirs
 	}
 	st.env = &connector.Env{Cat: cat, Dirs: st.dirs, URL: func(from, to *graph.Instance) string {
 		if from == nil {
