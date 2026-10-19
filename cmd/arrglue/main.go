@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/mathieuletyrant/arrglue/internal/catalog"
 	"github.com/mathieuletyrant/arrglue/internal/connector"
@@ -21,11 +22,12 @@ import (
 	"github.com/mathieuletyrant/arrglue/internal/reach"
 )
 
-var catDir string
+var catDir, secretsFile string
 
 func main() {
 	root := &cobra.Command{Use: "arrglue", Short: "Discover the *arr stack and wire the apps together", SilenceUsage: true}
 	root.PersistentFlags().StringVar(&catDir, "catalog", os.Getenv("ARRGLUE_CATALOG"), "dir of YAML files overriding the embedded catalog")
+	root.PersistentFlags().StringVar(&secretsFile, "secrets", os.Getenv("ARRGLUE_SECRETS"), "YAML file of api keys arrglue cannot read itself: {<container name>: <key>}")
 
 	var asJSON bool
 	scan := &cobra.Command{Use: "scan", Short: "List the discovered apps (writes nothing)", RunE: func(cmd *cobra.Command, _ []string) error {
@@ -90,14 +92,20 @@ func main() {
 			}
 		}
 		fmt.Println()
+		failed := 0
 		for _, c := range changes {
 			if c.Apply == nil {
 				continue
 			}
 			if err := c.Apply(cmd.Context()); err != nil {
-				return fmt.Errorf("%s %s: %w", arrow(c.Link), c.What, err)
+				failed++
+				fmt.Printf("  %s %s  %s: %v\n", sym("ERROR"), arrow(c.Link), c.What, err)
+				continue
 			}
 			fmt.Printf("  %s %s  %s\n", sym("OK"), arrow(c.Link), c.What)
+		}
+		if failed > 0 {
+			return fmt.Errorf("%d change(s) failed", failed)
 		}
 		return nil
 	}}
@@ -137,6 +145,21 @@ func load(ctx context.Context, withDirs bool) (*state, error) {
 	insts, err := cli.Discover(ctx, cat)
 	if err != nil {
 		return nil, err
+	}
+	if secretsFile != "" {
+		b, err := os.ReadFile(secretsFile)
+		if err != nil {
+			return nil, err
+		}
+		manual := map[string]string{}
+		if err := yaml.Unmarshal(b, &manual); err != nil {
+			return nil, fmt.Errorf("%s: %w", secretsFile, err)
+		}
+		for i := range insts {
+			if k := manual[insts[i].Name]; k != "" {
+				insts[i].Secret = graph.SecretRef{Source: "file:" + secretsFile, Value: k}
+			}
+		}
 	}
 	st := &state{cat: cat, insts: insts, self: cli.Self(ctx), urls: map[string]string{}, dirs: map[string][]string{}}
 	for i := range insts {

@@ -124,6 +124,11 @@ func (c *Client) Discover(ctx context.Context, cat *catalog.Catalog) ([]graph.In
 		}
 		readConfig(&inst, app)
 		readSecret(&inst, app)
+		if inst.Secret.Value == "" && app.Secret.Env != "" {
+			if v := c.env(ctx, ct.ID, app.Secret.Env); v != "" {
+				inst.Secret = graph.SecretRef{Source: "env:" + app.Secret.Env, Value: v}
+			}
+		}
 		for k, v := range app.Config.Defaults {
 			if inst.Config[k] == "" {
 				inst.Config[k] = v
@@ -137,6 +142,9 @@ func (c *Client) Discover(ctx context.Context, cat *catalog.Catalog) ([]graph.In
 
 // readConfig locates the app's config file through its mounts and extracts catalog fields.
 func readConfig(inst *graph.Instance, app *catalog.App) {
+	if len(app.Config.Paths) == 0 { // app without a readable config file
+		return
+	}
 	f := ""
 	for _, p := range app.Config.Paths {
 		if h, ok := inst.ToHost(p); ok {
@@ -159,11 +167,32 @@ func readConfig(inst *graph.Instance, app *catalog.App) {
 		inst.Errors = append(inst.Errors, err.Error())
 		return
 	}
+	inst.ConfigFile = f
 	if k, ok := fields["api_key"]; ok {
 		delete(fields, "api_key")
 		inst.Secret = graph.SecretRef{Source: "file:" + f + "#api_key", Value: k}
 	}
 	inst.Config = fields
+}
+
+// env reads one environment variable of a container (GET /containers/{id}/json).
+func (c *Client) env(ctx context.Context, id, name string) string {
+	req, _ := http.NewRequestWithContext(ctx, "GET", c.Base+"/containers/"+id+"/json", nil)
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer res.Body.Close()
+	var out struct{ Config struct{ Env []string } }
+	if json.NewDecoder(res.Body).Decode(&out) != nil {
+		return ""
+	}
+	for _, e := range out.Config.Env {
+		if v, ok := strings.CutPrefix(e, name+"="); ok {
+			return v
+		}
+	}
+	return ""
 }
 
 // readSecret fills the key from the app's database when the config had none.

@@ -1,0 +1,12 @@
+kind: maintainerr
+family: tools
+detect:
+  images: ["*/maintainerr", "maintainerr"]
+links: [radarr, sonarr, jellyfin, seerr]
+ports: { http: 6246 }
+config:
+  paths: []
+  format: json
+health:
+  path: /api/settings/version
+  version_field: raw

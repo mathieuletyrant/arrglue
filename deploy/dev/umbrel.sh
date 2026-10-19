@@ -12,7 +12,9 @@ UMBREL=${UMBREL:-umbrel-verify}
 DATA=$(docker inspect "$UMBREL" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}')
 [ -n "$DATA" ] || { echo "cannot find /data mount of container $UMBREL" >&2; exit 1; }
 docker build -q -t arrglue:dev . >/dev/null
-exec docker run --rm --network umbrel_main_network \
+SECRETS=""
+[ -n "${ARRGLUE_SECRETS:-}" ] && SECRETS="-v $ARRGLUE_SECRETS:/secrets.yaml:ro -e ARRGLUE_SECRETS=/secrets.yaml"
+exec docker run --rm --network umbrel_main_network $SECRETS \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v "$DATA:$DATA:ro" \
   arrglue:dev "$@"

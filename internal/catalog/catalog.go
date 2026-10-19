@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 
 	embedded "github.com/mathieuletyrant/arrglue/catalog"
@@ -40,6 +41,7 @@ type App struct {
 	Secret struct {
 		Paths  []string `yaml:"paths"`  // app-side paths of a SQLite database
 		SQLite string   `yaml:"sqlite"` // query returning the key in its first column
+		Env    string   `yaml:"env"`    // container environment variable holding the key
 	} `yaml:"secret"`
 	Inject struct {
 		Env map[string]string `yaml:"env"`
@@ -127,11 +129,23 @@ func (a *App) ReadConfig(file string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	out := map[string]string{}
+	if a.Config.Format == "regex" { // fields are regexps with one capture group, for odd formats (config.js...)
+		for name, expr := range a.Config.Fields {
+			re, err := regexp.Compile("(?s)" + expr)
+			if err != nil {
+				return nil, fmt.Errorf("%s field %s: %w", a.Kind, name, err)
+			}
+			if m := re.FindSubmatch(b); len(m) > 1 {
+				out[name] = strings.TrimSpace(string(m[1]))
+			}
+		}
+		return out, nil
+	}
 	tree, err := parse(a.Config.Format, b)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	out := map[string]string{}
 	for name, p := range a.Config.Fields {
 		if v, ok := lookup(tree, p); ok {
 			out[name] = v
@@ -148,14 +162,14 @@ func (a *App) ReadSecret(file string) (string, error) {
 		return "", err
 	}
 	defer db.Close()
-	var key string
+	var key sql.NullString
 	if err := db.QueryRow(a.Secret.SQLite).Scan(&key); err != nil {
 		if err == sql.ErrNoRows {
 			return "", nil
 		}
 		return "", fmt.Errorf("%s: %w", file, err)
 	}
-	return key, nil
+	return key.String, nil
 }
 
 func parse(format string, b []byte) (any, error) {

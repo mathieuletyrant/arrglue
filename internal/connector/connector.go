@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,7 +40,7 @@ type Env struct {
 
 type Change struct {
 	Link   string // "prowlarr_server_1 -> radarr_server_1"
-	Op     string // create | update | adopt | noop | skip
+	Op     string // create | update | adopt | noop | skip | manual (a file the user must edit)
 	What   string
 	Detail string                          // diff or reason
 	Apply  func(ctx context.Context) error // nil when nothing to do
@@ -57,7 +59,7 @@ type Target interface {
 	Test(ctx context.Context) (found bool, err error) // ask the caller to test the existing object
 }
 
-var All = []Connector{prowlarr{}, downloadClient{}, seerr{}, mediaNotify{}}
+var All = []Connector{prowlarr{}, downloadClient{}, seerr{}, mediaNotify{}, maintainerr{}, healarr{}, cleanuparr{}, spotarr{}, crossSeed{}}
 
 // servarrTarget is a Servarr-style object (download client, application...):
 // {implementation, fields: [{name, value}], tags}, with /schema and /test.
@@ -168,9 +170,10 @@ func (o obj) set(name string, v any, force bool) string {
 	return ""
 }
 
+// masked: APIs hide secrets on read as "********" (Servarr) or "••••••" (Cleanuparr).
 func masked(v any) bool {
 	s, ok := v.(string)
-	return ok && s != "" && strings.Trim(s, "*") == ""
+	return ok && s != "" && strings.Trim(s, "*•") == ""
 }
 
 func (o obj) hasTag(id float64) bool {
@@ -183,17 +186,24 @@ func (o obj) hasTag(id float64) bool {
 	return false
 }
 
-// api is a minimal Servarr-style JSON client.
+// api is a minimal JSON client: base URL + path prefix + auth header.
 type api struct {
-	base, prefix, key string
+	base, prefix string
+	headers      map[string]string
 }
 
+// newAPI targets a Servarr-style API (/api/vN, X-Api-Key).
 func newAPI(base string, app *catalog.App, key string) api {
 	v := "v3"
 	if len(app.API.Versions) > 0 {
 		v = app.API.Versions[0]
 	}
-	return api{base: base, prefix: "/api/" + v, key: key}
+	return api{base: base, prefix: "/api/" + v, headers: map[string]string{"X-Api-Key": key}}
+}
+
+// jsonAPI targets any JSON API with one auth header (e.g. "Authorization", "Bearer "+token).
+func jsonAPI(base, prefix, header, value string) api {
+	return api{base: base, prefix: prefix, headers: map[string]string{header: value}}
 }
 
 func (a api) do(ctx context.Context, method, path string, in, out any) error {
@@ -203,7 +213,11 @@ func (a api) do(ctx context.Context, method, path string, in, out any) error {
 		body = bytes.NewReader(b)
 	}
 	req, _ := http.NewRequestWithContext(ctx, method, a.base+a.prefix+path, body)
-	req.Header.Set("X-Api-Key", a.key)
+	for k, v := range a.headers {
+		if v != "" {
+			req.Header.Set(k, v)
+		}
+	}
 	req.Header.Set("Content-Type", "application/json")
 	res, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
 	if err != nil {
@@ -322,4 +336,62 @@ func title(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// hostPort splits a base URL into host, port and path.
+func hostPort(raw string) (host string, port int, path string) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", 0, ""
+	}
+	host, p, _ := strings.Cut(u.Host, ":")
+	port, _ = strconv.Atoi(p)
+	return host, port, u.Path
+}
+
+// slot is a single-valued setting (one Seerr URL, one Jellyfin server...) in
+// an app that has no list of servers: create when empty, skip when set by
+// hand unless adopting, update when ours.
+// ponytail: ownership of a slot cannot be marked; "set by hand" = set to
+// something else. --adopt overwrites it.
+func slot(link, what string, current map[string]any, want map[string]any, adopt bool, save func(ctx context.Context) error) Change {
+	empty := true
+	var d []string
+	for k, v := range want {
+		cur := current[k]
+		if cur != nil && cur != "" {
+			empty = false
+		}
+		if fmt.Sprint(cur) != fmt.Sprint(v) {
+			if strings.Contains(strings.ToLower(k), "key") {
+				d = append(d, "  "+k+": *** -> ***")
+			} else {
+				d = append(d, fmt.Sprintf("  %s: %v -> %v", k, cur, v))
+			}
+		}
+	}
+	sort.Strings(d)
+	switch {
+	case len(d) == 0:
+		return Change{Link: link, Op: "noop", What: what}
+	case empty:
+		return Change{Link: link, Op: "create", What: what, Detail: strings.Join(d, "\n"), Apply: save}
+	case adopt:
+		return Change{Link: link, Op: "adopt", What: what, Detail: strings.Join(d, "\n"), Apply: save}
+	}
+	return Change{Link: link, Op: "skip", What: what, Detail: fmt.Sprintf("set by hand to %v; --adopt overwrites it", current[firstKey(want)])}
+}
+
+func firstKey(m map[string]any) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if !strings.Contains(strings.ToLower(k), "key") {
+			return k
+		}
+	}
+	return keys[0]
 }

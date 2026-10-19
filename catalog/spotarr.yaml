@@ -1,0 +1,13 @@
+kind: spotarr
+family: tools
+detect:
+  images: ["*/spotarr", "spotarr"]
+links: [seerr, jellyfin]
+ports: { http: 3000 }
+config:
+  paths: []
+  format: json
+secret:
+  env: API_TOKEN
+health:
+  path: /healthz

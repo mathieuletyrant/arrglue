@@ -1,0 +1,18 @@
+kind: cross-seed
+family: tools
+detect:
+  images: ["*/cross-seed", "cross-seed"]
+links: [prowlarr, radarr, sonarr, transmission]
+ports: { http: 2468 }
+config:
+  # a JS module: fields are regexps with one capture group
+  paths: [/config/config.js]
+  format: regex
+  fields:
+    torznab: 'torznab:\s*\[([^\]]*)\]'
+    radarr: '\bradarr:\s*\[([^\]]*)\]'
+    sonarr: '\bsonarr:\s*\[([^\]]*)\]'
+    torrent_clients: 'torrentClients:\s*\[([^\]]*)\]'
+# its own api key (cross-seed.db, settings.apikey) is only needed to call its webhooks: not used yet
+health:
+  path: /api/ping

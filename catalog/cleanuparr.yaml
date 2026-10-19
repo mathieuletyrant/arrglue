@@ -1,0 +1,15 @@
+kind: cleanuparr
+family: tools
+detect:
+  images: ["*/cleanuparr", "cleanuparr"]
+links: [radarr, sonarr, transmission]
+ports: { http: 11011 }
+config:
+  paths: []
+  format: json
+secret:
+  # the API key is per user, written once the first-run account setup is done
+  paths: [/config/users.db]
+  sqlite: SELECT api_key FROM users WHERE setup_completed = 1 LIMIT 1
+health:
+  path: /health

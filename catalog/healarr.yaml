@@ -1,0 +1,14 @@
+kind: healarr
+family: tools
+detect:
+  images: ["*/healarr", "healarr"]
+links: [radarr, sonarr]
+ports: { http: 3090 }
+config:
+  paths: []
+  format: json
+  # the API key is encrypted in healarr.db: paste it (Healarr → Config → API key) in --secrets
+  fields: { api_key: "" }
+health:
+  path: /api/health
+  version_field: version

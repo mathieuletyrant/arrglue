@@ -4,20 +4,21 @@ package graph
 import "strings"
 
 type Instance struct {
-	ID       string // stable: "docker:radarr"
-	Kind     string // catalog kind
-	Version  string
-	Provider string
-	Name     string            // DNS name on its networks (container name)
-	Networks []string          // docker networks; ["host"] for host mode
-	Gateway  string            // gateway of the first docker network (route to the host)
-	Aliases  []string          // extra DNS names
-	Ports    []Port            // listening ports
-	Mounts   []Mount           // app path -> host path
-	Config   map[string]string // catalog fields found in config (secrets removed)
-	Secret   SecretRef
-	Labels   map[string]string
-	Errors   []string // discovery problems (config unreadable, ...)
+	ID         string // stable: "docker:radarr"
+	Kind       string // catalog kind
+	Version    string
+	Provider   string
+	Name       string            // DNS name on its networks (container name)
+	Networks   []string          // docker networks; ["host"] for host mode
+	Gateway    string            // gateway of the first docker network (route to the host)
+	Aliases    []string          // extra DNS names
+	Ports      []Port            // listening ports
+	Mounts     []Mount           // app path -> host path
+	Config     map[string]string // catalog fields found in config (secrets removed)
+	ConfigFile string            // host path of the config file that was read, "" if none
+	Secret     SecretRef
+	Labels     map[string]string
+	Errors     []string // discovery problems (config unreadable, ...)
 }
 
 type Port struct {

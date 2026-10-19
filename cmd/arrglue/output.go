@@ -38,6 +38,8 @@ func sym(level string) string {
 		return yellow("~")
 	case "adopt":
 		return yellow("±")
+	case "manual":
+		return yellow("✎")
 	}
 	return "?"
 }
@@ -189,11 +191,13 @@ func printDoctor(rep *Report) {
 // printPlan groups changes Terraform-style and returns how many will write.
 func printPlan(changes []connector.Change) int {
 	count := map[string]int{}
-	var todo, skipped, same [][]string
+	var todo, skipped, same, manual [][]string
 	for _, c := range changes {
 		count[c.Op]++
 		row := []string{sym(c.Op), arrow(c.Link), c.What, c.Detail}
 		switch c.Op {
+		case "manual":
+			manual = append(manual, row)
 		case "skip":
 			skipped = append(skipped, row)
 		case "noop":
@@ -213,6 +217,17 @@ func printPlan(changes []connector.Change) int {
 			}
 		}
 	}
+	if len(manual) > 0 {
+		fmt.Printf("\n%s  config files arrglue cannot write: put this in yourself\n", bold("MANUAL"))
+		for _, r := range manual {
+			fmt.Printf("  %s %s  %s\n", r[0], r[1], r[2])
+			for _, l := range strings.Split(r[3], "\n") {
+				if l != "" {
+					fmt.Printf("      %s\n", l)
+				}
+			}
+		}
+	}
 	if len(skipped) > 0 {
 		fmt.Printf("\n%s  left untouched (--adopt takes over hand-made objects)\n", bold("SKIPPED"))
 		table(skipped)
@@ -221,7 +236,7 @@ func printPlan(changes []connector.Change) int {
 		fmt.Printf("\n%s  already as desired\n", bold("UNCHANGED"))
 		table(same)
 	}
-	fmt.Printf("\nPlan: %d to create, %d to update, %d to adopt, %d unchanged, %d skipped.\n",
-		count["create"], count["update"], count["adopt"], count["noop"], count["skip"])
+	fmt.Printf("\nPlan: %d to create, %d to update, %d to adopt, %d manual, %d unchanged, %d skipped.\n",
+		count["create"], count["update"], count["adopt"], count["manual"], count["noop"], count["skip"])
 	return count["create"] + count["update"] + count["adopt"]
 }

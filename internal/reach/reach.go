@@ -119,8 +119,11 @@ func Probe(ctx context.Context, base string, app *catalog.App, key string) (stri
 	if app.Health.VersionField == "" || res.StatusCode != 200 {
 		return "", nil
 	}
-	var body map[string]any
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if app.Health.VersionField == "raw" { // plain-text body
+		return strings.TrimSpace(strings.Trim(string(b), "\"")), nil
+	}
+	var body map[string]any
 	if json.Unmarshal(b, &body) == nil && body[app.Health.VersionField] != nil {
 		return fmt.Sprint(body[app.Health.VersionField]), nil
 	}

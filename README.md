@@ -9,7 +9,8 @@ path / hardlink checks, links tested by the apps themselves), `plan` / `apply`
 mapping, seerr → radarr/sonarr/jellyfin, radarr/sonarr → jellyfin library refresh)
 and `serve` (daemon + registry API). Every object arrglue creates is
 tagged `arrglue`; equivalent objects made by hand are left alone unless `-adopt`.
-Catalog covers radarr, sonarr, prowlarr, transmission, jellyfin, seerr (jellyseerr/overseerr).
+Catalog covers radarr, sonarr, prowlarr, transmission, jellyfin, seerr (jellyseerr/overseerr),
+cleanuparr, maintainerr, healarr, spotarr and cross-seed.
 
 ```sh
 go test ./...                 # replays an Umbrel-shaped docker API fixture, no Docker needed
@@ -19,6 +20,26 @@ go run ./cmd/arrglue plan     # Terraform-style diff of the links, writes nothin
 go run ./cmd/arrglue apply    # asks before writing (--yes to skip, --adopt to take over hand-made objects)
 go run ./cmd/arrglue serve    # daemon: rescans on Docker events and every 15 min, serves the registry
 ```
+
+## Connectors
+
+| From → to | Object | Ownership |
+|---|---|---|
+| prowlarr → radarr/sonarr | application (both URLs) | `arrglue` tag |
+| radarr/sonarr → transmission | download client + remote path mapping | `arrglue` tag |
+| radarr/sonarr → jellyfin | library refresh notification | `arrglue` tag |
+| seerr → radarr/sonarr, jellyfin | servers, media server host | `[arrglue]` name prefix / slot |
+| maintainerr → radarr/sonarr, jellyfin, seerr | servers, media server (first Jellyfin admin), seerr | `[arrglue]` prefix / slot |
+| cleanuparr → radarr/sonarr, transmission | instances, download client | `[arrglue]` prefix |
+| healarr → radarr/sonarr | *arr instances | `[arrglue]` prefix |
+| spotarr → seerr, jellyfin | settings sections | slot |
+| cross-seed → prowlarr, radarr, sonarr, transmission | `config.js` arrays | **manual**: plan prints what to add |
+
+A *slot* is a single-valued setting: created when empty, left alone when set by hand unless `--adopt`.
+
+Keys arrglue cannot read itself (Healarr encrypts its own) go in a YAML file passed with
+`--secrets` or `ARRGLUE_SECRETS`: `{<container name>: <key>}`. Apps still in their first-run
+wizard (Seerr, Cleanuparr, Healarr) are reported as pending until you finish it once.
 
 ## Registry API (`serve`)
 
