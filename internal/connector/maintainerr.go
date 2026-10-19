@@ -33,7 +33,8 @@ func (maintainerr) Target(env *Env, from, to *graph.Instance) (Target, string) {
 			return nil, "arrglue cannot reach " + to.Name + " (see doctor)"
 		}
 		// Maintainerr tracks watch status for one Jellyfin user: the first administrator
-		uid, name, err := jellyfinAdmin(env.URL(nil, to), to.Secret.Value)
+		hdr, val := env.Cat.Apps[to.Kind].AuthHeader(to.Secret.Value)
+		uid, name, err := jellyfinAdmin(env.URL(nil, to), hdr, val)
 		if err != nil {
 			return nil, "cannot list Jellyfin users: " + err.Error()
 		}
@@ -189,12 +190,12 @@ func (t *maintainerrSlot) Plan(ctx context.Context, adopt bool) ([]Change, error
 }
 
 // jellyfinAdmin returns the id and name of Jellyfin's first administrator.
-func jellyfinAdmin(base, key string) (id, name string, err error) {
+func jellyfinAdmin(base, header, value string) (id, name string, err error) {
 	var users []struct {
 		Id, Name string
 		Policy   struct{ IsAdministrator bool }
 	}
-	if err := jsonAPI(base, "", "X-Emby-Token", key).do(context.Background(), "GET", "/Users", nil, &users); err != nil {
+	if err := jsonAPI(base, "", header, value).do(context.Background(), "GET", "/Users", nil, &users); err != nil {
 		return "", "", err
 	}
 	for _, u := range users {

@@ -51,6 +51,7 @@ type App struct {
 		Path string `yaml:"path"`
 		Auth struct {
 			Header string `yaml:"header"`
+			Format string `yaml:"format"` // header value, %s = key; default "%s"
 		} `yaml:"auth"`
 		VersionField string `yaml:"version_field"`
 		OK           []int  `yaml:"ok"` // accepted statuses, default [200]
@@ -289,4 +290,15 @@ func lookup(tree any, p string) (string, bool) {
 	default:
 		return fmt.Sprint(v), true
 	}
+}
+
+// AuthHeader returns the header name and value that carry the key.
+func (a *App) AuthHeader(key string) (name, value string) {
+	if a.Health.Auth.Header == "" || key == "" {
+		return "", ""
+	}
+	if a.Health.Auth.Format != "" {
+		return a.Health.Auth.Header, fmt.Sprintf(a.Health.Auth.Format, key)
+	}
+	return a.Health.Auth.Header, key
 }

@@ -97,8 +97,8 @@ func shared(a, b []string) bool {
 func Probe(ctx context.Context, base string, app *catalog.App, key string) (string, error) {
 	u := base + "/" + strings.TrimPrefix(app.Health.Path, "/")
 	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
-	if app.Health.Auth.Header != "" && key != "" {
-		req.Header.Set(app.Health.Auth.Header, key)
+	if name, value := app.AuthHeader(key); name != "" {
+		req.Header.Set(name, value)
 	}
 	res, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
 	if err != nil {

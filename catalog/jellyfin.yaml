@@ -19,5 +19,6 @@ secret:
 health:
   # authenticated on purpose: a wrong key shows up in doctor, not later in a connector
   path: /System/Info
-  auth: { header: X-Emby-Token }
+  # Jellyfin 12 may refuse the legacy X-Emby-Token header: use the official scheme
+  auth: { header: Authorization, format: 'MediaBrowser Token="%s"' }
   version_field: Version
