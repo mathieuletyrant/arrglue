@@ -13,7 +13,7 @@ import (
 	"path"
 	"strings"
 
-	embedded "github.com/mathieuletyrant/argue/catalog"
+	embedded "github.com/mathieuletyrant/arrglue/catalog"
 
 	"gopkg.in/yaml.v3"
 )

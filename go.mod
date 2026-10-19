@@ -1,4 +1,4 @@
-module github.com/mathieuletyrant/argue
+module github.com/mathieuletyrant/arrglue
 
 go 1.27
 

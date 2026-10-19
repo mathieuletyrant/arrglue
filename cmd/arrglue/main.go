@@ -14,9 +14,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/mathieuletyrant/argue/internal/catalog"
-	"github.com/mathieuletyrant/argue/internal/graph"
-	"github.com/mathieuletyrant/argue/internal/provider/docker"
+	"github.com/mathieuletyrant/arrglue/internal/catalog"
+	"github.com/mathieuletyrant/arrglue/internal/graph"
+	"github.com/mathieuletyrant/arrglue/internal/provider/docker"
 )
 
 func main() {

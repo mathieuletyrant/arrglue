@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mathieuletyrant/argue/internal/catalog"
+	"github.com/mathieuletyrant/arrglue/internal/catalog"
 )
 
 // Replays testdata/containers.json (an Umbrel stack: <app>_server_1 on

@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mathieuletyrant/argue/internal/catalog"
-	"github.com/mathieuletyrant/argue/internal/graph"
+	"github.com/mathieuletyrant/arrglue/internal/catalog"
+	"github.com/mathieuletyrant/arrglue/internal/graph"
 )
 
 type Client struct {

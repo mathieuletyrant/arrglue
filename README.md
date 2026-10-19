@@ -38,14 +38,14 @@ deploy/dev/umbrel.sh doctor
 
 ## Testing on a real Umbrel
 
-Every push to `main` publishes `ghcr.io/mathieuletyrant/argue:latest` (amd64 + arm64).
+Every push to `main` publishes `ghcr.io/mathieuletyrant/arrglue:latest` (amd64 + arm64).
 On the Umbrel, open Settings → Advanced → Terminal and run:
 
 ```sh
 docker run --rm --pull always --network umbrel_main_network \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v /home/umbrel/umbrel/app-data:/home/umbrel/umbrel/app-data:ro \
-  ghcr.io/mathieuletyrant/argue doctor
+  ghcr.io/mathieuletyrant/arrglue doctor
 ```
 
 With SSH access instead: `deploy/dev/remote.sh doctor` (cross-compiles and runs the same thing over `ssh umbrel@umbrel.local`).
