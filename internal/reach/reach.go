@@ -11,7 +11,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -122,7 +124,11 @@ func probe(ctx context.Context, base string, app *catalog.App, key string) (stri
 	if name, value := app.AuthHeader(key); name != "" {
 		req.Header.Set(name, value)
 	}
+	start := time.Now()
 	res, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if os.Getenv("ARRGLUE_DEBUG") != "" {
+		log.Printf("%6dms GET %s", time.Since(start).Milliseconds(), u)
+	}
 	if err != nil {
 		return "", err
 	}

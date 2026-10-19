@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -219,7 +221,11 @@ func (a api) do(ctx context.Context, method, path string, in, out any) error {
 		}
 	}
 	req.Header.Set("Content-Type", "application/json")
+	start := time.Now()
 	res, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	if os.Getenv("ARRGLUE_DEBUG") != "" {
+		log.Printf("%6dms %s %s", time.Since(start).Milliseconds(), method, a.base+a.prefix+path)
+	}
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -70,7 +71,11 @@ func Dirs(ctx context.Context, in *graph.Instance, app *catalog.App, base string
 }
 
 func do(hc *http.Client, req *http.Request, out any) error {
+	start := time.Now()
 	res, err := hc.Do(req)
+	if os.Getenv("ARRGLUE_DEBUG") != "" {
+		log.Printf("%6dms %s %s", time.Since(start).Milliseconds(), req.Method, req.URL)
+	}
 	if err != nil {
 		return err
 	}

@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/fatih/color"
 
@@ -104,6 +106,14 @@ type Row struct {
 
 // report runs the doctor checks: APPS / ROUTES / PATHS / LINKS.
 func report(ctx context.Context, st *state) *Report {
+	step := func(name string) func() {
+		start := time.Now()
+		return func() {
+			if os.Getenv("ARRGLUE_DEBUG") != "" {
+				log.Printf("section %s: %dms", name, time.Since(start).Milliseconds())
+			}
+		}
+	}
 	rep := &Report{Self: st.self.Name + " on " + strings.Join(st.self.Networks, ",")}
 	rep.Sections = []Section{
 		{Name: "APPS", Title: "discovered apps, as reached by arrglue"},
@@ -136,6 +146,7 @@ func report(ctx context.Context, st *state) *Report {
 			add(0, "OK", in.Name, in.Kind, or(in.Version, "-"), key, st.urls[in.ID])
 		}
 	}
+	done := step("ROUTES")
 	pairs := reach.Pairs(st.cat, st.insts)
 	routes := reach.Parallel(len(pairs), func(i int) reach.Result {
 		return reach.Check(ctx, st.self, pairs[i][0], pairs[i][1], st.cat.Apps[pairs[i][1].Kind])
@@ -155,6 +166,8 @@ func report(ctx context.Context, st *state) *Report {
 			add(1, "ERROR", link, r.URL, r.Err)
 		}
 	}
+	done()
+	done = step("LINKS")
 	for i := range st.insts {
 		if arr := &st.insts[i]; st.cat.Apps[arr.Kind].API.RootFolders != "" && st.urls[arr.ID] != "" && len(st.dirs[arr.ID]) == 0 {
 			add(2, "WARN", arr.Name, "-", "no root folder configured yet")
@@ -172,6 +185,7 @@ func report(ctx context.Context, st *state) *Report {
 	for _, r := range engine.Test(ctx, st.env, st.cat, st.insts) {
 		add(3, r.Level, arrow(r.Link), r.What, r.Msg)
 	}
+	done()
 	return rep
 }
 

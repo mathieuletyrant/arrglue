@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"strings"
@@ -153,6 +154,12 @@ type state struct {
 func load(ctx context.Context, withDirs bool) (*state, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	start := time.Now()
+	defer func() {
+		if os.Getenv("ARRGLUE_DEBUG") != "" {
+			log.Printf("section APPS (discover + probe + dirs): %dms", time.Since(start).Milliseconds())
+		}
+	}()
 	cat, err := catalog.Load(catDir)
 	if err != nil {
 		return nil, err
