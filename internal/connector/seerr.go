@@ -175,6 +175,7 @@ func (t *seerrArr) Plan(ctx context.Context, adopt bool) ([]Change, error) {
 		if create {
 			return t.a.do(ctx, "POST", "/settings/"+t.kind, o, nil)
 		}
+		delete(o, "id") // read-only in the body, Seerr validates against its OpenAPI spec
 		return t.a.do(ctx, "PUT", "/settings/"+t.kind+"/"+id, o, nil)
 	}}}, nil
 }
