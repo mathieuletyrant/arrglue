@@ -13,6 +13,7 @@ config:
     url_base: /rpc-url
     username: /rpc-username
     auth_required: /rpc-authentication-required
+  defaults: { url_base: /transmission/ }
 health:
   path: rpc
   ok: [200, 409]   # 409 = alive, wants X-Transmission-Session-Id

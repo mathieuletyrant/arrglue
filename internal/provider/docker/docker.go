@@ -49,6 +49,7 @@ type container struct {
 	NetworkSettings struct {
 		Networks map[string]struct {
 			IPAddress string
+			Gateway   string
 			Aliases   []string
 		}
 	}
@@ -104,6 +105,9 @@ func (c *Client) Discover(ctx context.Context, cat *catalog.Catalog) ([]graph.In
 		for n, net := range ct.NetworkSettings.Networks {
 			inst.Networks = append(inst.Networks, n)
 			inst.Aliases = append(inst.Aliases, net.Aliases...)
+			if inst.Gateway == "" {
+				inst.Gateway = net.Gateway
+			}
 		}
 		sort.Strings(inst.Networks)
 		seen := map[graph.Port]bool{} // same port is listed once per bound IP (v4, v6)
@@ -118,6 +122,11 @@ func (c *Client) Discover(ctx context.Context, cat *catalog.Catalog) ([]graph.In
 			inst.Mounts = append(inst.Mounts, graph.Mount{App: m.Destination, Host: m.Source})
 		}
 		readConfig(&inst, app)
+		for k, v := range app.Config.Defaults {
+			if inst.Config[k] == "" {
+				inst.Config[k] = v
+			}
+		}
 		out = append(out, inst)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -170,8 +179,11 @@ func (c *Client) Self(ctx context.Context) *graph.Instance {
 			if ct.HostConfig.NetworkMode == "host" {
 				self.Networks = []string{"host"}
 			}
-			for n := range ct.NetworkSettings.Networks {
+			for n, net := range ct.NetworkSettings.Networks {
 				self.Networks = append(self.Networks, n)
+				if self.Gateway == "" {
+					self.Gateway = net.Gateway
+				}
 			}
 			sort.Strings(self.Networks)
 		}

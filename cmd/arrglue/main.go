@@ -133,10 +133,8 @@ func main() {
 			fmt.Printf("%-5s %s: %s\n", level, scope, msg)
 		}
 		fmt.Printf("arrglue runs as %s on networks %v\n\n", self.Name, self.Networks)
-		byKind := map[string][]*graph.Instance{}
 		for i := range insts {
 			in := &insts[i]
-			byKind[in.Kind] = append(byKind[in.Kind], in)
 			for _, e := range in.Errors {
 				report("ERROR", in.ID, e)
 			}
@@ -148,44 +146,36 @@ func main() {
 			}
 		}
 		fmt.Println()
-		// reachability per declared pair (catalog links)
-		for i := range insts {
-			from := &insts[i]
-			for _, kind := range cat.Apps[from.Kind].Links {
-				for _, to := range byKind[kind] {
-					r := reach.Check(ctx, self, from, to, cat.Apps[to.Kind])
-					switch {
-					case r.URL == "":
-						report("ERROR", from.Name+" -> "+to.Name, r.Err)
-					case r.Verified:
-						report("OK", from.Name+" -> "+to.Name, r.URL)
-					case strings.HasPrefix(r.Err, "unverified"):
-						report("WARN", from.Name+" -> "+to.Name, r.URL+" ("+r.Err+")")
-					default:
-						report("ERROR", from.Name+" -> "+to.Name, r.URL+": "+r.Err)
-					}
-				}
+		// reachability per pair (catalog links, shared network)
+		pairs := reach.Pairs(cat, insts)
+		for _, p := range pairs {
+			from, to := p[0], p[1]
+			r := reach.Check(ctx, self, from, to, cat.Apps[to.Kind])
+			switch {
+			case r.URL == "":
+				report("ERROR", from.Name+" -> "+to.Name, r.Err)
+			case r.Verified:
+				report("OK", from.Name+" -> "+to.Name, r.URL)
+			case strings.HasPrefix(r.Err, "unverified"):
+				report("WARN", from.Name+" -> "+to.Name, r.URL+" ("+r.Err+")")
+			default:
+				report("ERROR", from.Name+" -> "+to.Name, r.URL+": "+r.Err)
 			}
 		}
 		fmt.Println()
 		// paths: servarr root folders vs download client dirs
 		for i := range insts {
-			arr := &insts[i]
-			if cat.Apps[arr.Kind].API.RootFolders == "" {
-				continue
-			}
-			if len(dirs[arr.ID]) == 0 {
+			if arr := &insts[i]; cat.Apps[arr.Kind].API.RootFolders != "" && urls[arr.ID] != "" && len(dirs[arr.ID]) == 0 {
 				report("WARN", arr.ID, "no root folder configured yet")
 			}
-			for _, kind := range cat.Apps[arr.Kind].Links {
-				for _, client := range byKind[kind] {
-					if cat.Apps[kind].Family != "downloader" {
-						continue
-					}
-					for _, f := range paths.Check(arr, client, dirs[arr.ID], dirs[client.ID]) {
-						report(f.Level, "paths", f.Msg)
-					}
-				}
+		}
+		for _, p := range pairs {
+			arr, client := p[0], p[1]
+			if cat.Apps[arr.Kind].API.RootFolders == "" || cat.Apps[client.Kind].Family != "downloader" {
+				continue
+			}
+			for _, f := range paths.Check(arr, client, dirs[arr.ID], dirs[client.ID]) {
+				report(f.Level, "paths", f.Msg)
 			}
 		}
 		if bad > 0 {

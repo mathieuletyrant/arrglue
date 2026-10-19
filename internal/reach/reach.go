@@ -50,9 +50,36 @@ func Candidates(from, to *graph.Instance, app *catalog.App) []string {
 		if !toHost {
 			p = to.PublishedPort(port)
 		}
-		add("host.docker.internal", p)
+		if from.Gateway != "" { // bridge gateway = the host, works on plain Linux
+			add(from.Gateway, p)
+		}
+		add("host.docker.internal", p) // Docker Desktop / OrbStack, or --add-host host-gateway
 	}
 	return c
+}
+
+// Pairs lists the caller -> callee couples worth wiring: kinds linked in the
+// catalog AND on a common Docker network (or either side in host/native mode).
+// Keeps two stacks on one host from being cross-wired through published ports.
+func Pairs(cat *catalog.Catalog, insts []graph.Instance) [][2]*graph.Instance {
+	var out [][2]*graph.Instance
+	for i := range insts {
+		from := &insts[i]
+		for _, kind := range cat.Apps[from.Kind].Links {
+			for j := range insts {
+				to := &insts[j]
+				if to.Kind != kind {
+					continue
+				}
+				fromHost := len(from.Networks) > 0 && from.Networks[0] == "host"
+				toHost := len(to.Networks) > 0 && to.Networks[0] == "host"
+				if fromHost || toHost || shared(from.Networks, to.Networks) {
+					out = append(out, [2]*graph.Instance{from, to})
+				}
+			}
+		}
+	}
+	return out
 }
 
 func shared(a, b []string) bool {

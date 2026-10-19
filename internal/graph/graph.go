@@ -10,6 +10,7 @@ type Instance struct {
 	Provider string
 	Name     string            // DNS name on its networks (container name)
 	Networks []string          // docker networks; ["host"] for host mode
+	Gateway  string            // gateway of the first docker network (route to the host)
 	Aliases  []string          // extra DNS names
 	Ports    []Port            // listening ports
 	Mounts   []Mount           // app path -> host path

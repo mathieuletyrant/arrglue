@@ -29,9 +29,10 @@ type App struct {
 	Links  []string       `yaml:"links"` // kinds this app connects to
 	Ports  map[string]int `yaml:"ports"`
 	Config struct {
-		Paths  []string          `yaml:"paths"`
-		Format string            `yaml:"format"` // xml | json | yaml | ini
-		Fields map[string]string `yaml:"fields"` // name -> /path/in/tree
+		Paths    []string          `yaml:"paths"`
+		Format   string            `yaml:"format"`   // xml | json | yaml | ini
+		Fields   map[string]string `yaml:"fields"`   // name -> /path/in/tree
+		Defaults map[string]string `yaml:"defaults"` // used when the config cannot be read
 	} `yaml:"config"`
 	Inject struct {
 		Env map[string]string `yaml:"env"`
