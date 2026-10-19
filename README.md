@@ -3,14 +3,18 @@
 Discovers the *arr stack wherever it runs, works out how each app can reach the
 others, and wires them together through their APIs. Spec: [SPEC.md](SPEC.md).
 
-Status: roadmap step 2 — catalog + Docker provider, read-only `scan` / `doctor` with
-per-pair reachability and path / hardlink checks.
+Status: roadmap step 3 — `scan` / `doctor` (read-only: discovery, per-pair reachability,
+path / hardlink checks) and `plan` / `apply` (connectors: prowlarr → radarr/sonarr,
+radarr/sonarr → transmission + remote path mapping). Every object arrglue creates is
+tagged `arrglue`; equivalent objects made by hand are left alone unless `-adopt`.
 Catalog covers radarr, sonarr, prowlarr, transmission, jellyfin, seerr (jellyseerr/overseerr).
 
 ```sh
 go test ./...                 # replays an Umbrel-shaped docker API fixture, no Docker needed
 go run ./cmd/arrglue scan     # local Docker socket (DOCKER_HOST honoured); -json for machine output
 go run ./cmd/arrglue doctor   # exit 1 on any problem
+go run ./cmd/arrglue plan     # Terraform-style diff of the links, writes nothing
+go run ./cmd/arrglue apply    # asks before writing (-yes to skip, -adopt to take over hand-made objects)
 ```
 
 ## Testing against a real umbrelOS

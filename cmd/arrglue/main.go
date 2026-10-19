@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/mathieuletyrant/arrglue/internal/catalog"
+	"github.com/mathieuletyrant/arrglue/internal/connector"
+	"github.com/mathieuletyrant/arrglue/internal/engine"
 	"github.com/mathieuletyrant/arrglue/internal/graph"
 	"github.com/mathieuletyrant/arrglue/internal/paths"
 	"github.com/mathieuletyrant/arrglue/internal/provider/docker"
@@ -21,8 +23,10 @@ import (
 func main() {
 	catDir := flag.String("catalog", os.Getenv("ARRGLUE_CATALOG"), "dir of YAML files overriding the embedded catalog")
 	asJSON := flag.Bool("json", false, "machine-readable output")
+	yes := flag.Bool("yes", false, "apply without asking")
+	adopt := flag.Bool("adopt", false, "take over equivalent objects created by hand (tags them arrglue)")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: arrglue [-catalog dir] [-json] scan|doctor")
+		fmt.Fprintln(os.Stderr, "usage: arrglue [-catalog dir] [-json] [-yes] [-adopt] scan|doctor|plan|apply")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -47,7 +51,63 @@ func main() {
 		}
 	}
 
+	dirs := map[string][]string{}
+	if cmd := flag.Arg(0); cmd == "doctor" || cmd == "plan" || cmd == "apply" {
+		for i := range insts {
+			in := &insts[i]
+			if urls[in.ID] == "" {
+				continue
+			}
+			d, err := paths.Dirs(ctx, in, cat.Apps[in.Kind], urls[in.ID])
+			if err != nil {
+				in.Errors = append(in.Errors, "cannot read directories: "+err.Error())
+			}
+			dirs[in.ID] = d
+		}
+	}
+
 	switch flag.Arg(0) {
+	case "plan", "apply":
+		env := &connector.Env{Cat: cat, Dirs: dirs, Adopt: *adopt, URL: func(from, to *graph.Instance) string {
+			if from == nil {
+				return urls[to.ID]
+			}
+			return reach.Check(ctx, self, from, to, cat.Apps[to.Kind]).URL
+		}}
+		changes, err := engine.Plan(ctx, env, cat, insts)
+		fail(err)
+		todo := 0
+		for _, c := range changes {
+			if c.Apply != nil {
+				todo++
+			}
+			fmt.Printf("%-6s %s: %s\n", c.Op, c.Link, c.What)
+			if c.Detail != "" {
+				fmt.Println(c.Detail)
+			}
+		}
+		fmt.Printf("\n%d change(s) to apply.\n", todo)
+		if flag.Arg(0) == "plan" || todo == 0 {
+			return
+		}
+		if !*yes {
+			fmt.Print("Apply? [y/N] ")
+			var ans string
+			fmt.Scanln(&ans)
+			if ans != "y" && ans != "Y" {
+				return
+			}
+		}
+		for _, c := range changes {
+			if c.Apply == nil {
+				continue
+			}
+			if err := c.Apply(ctx); err != nil {
+				fmt.Printf("FAILED %s: %s: %v\n", c.Link, c.What, err)
+				os.Exit(1)
+			}
+			fmt.Printf("done   %s: %s\n", c.Link, c.What)
+		}
 	case "scan":
 		if *asJSON {
 			json.NewEncoder(os.Stdout).Encode(insts)
@@ -89,7 +149,6 @@ func main() {
 		}
 		fmt.Println()
 		// reachability per declared pair (catalog links)
-		dirs := map[string][]string{}
 		for i := range insts {
 			from := &insts[i]
 			for _, kind := range cat.Apps[from.Kind].Links {
@@ -110,17 +169,6 @@ func main() {
 		}
 		fmt.Println()
 		// paths: servarr root folders vs download client dirs
-		for i := range insts {
-			in := &insts[i]
-			if urls[in.ID] == "" {
-				continue
-			}
-			d, err := paths.Dirs(ctx, in, cat.Apps[in.Kind], urls[in.ID])
-			if err != nil {
-				report("WARN", in.ID, "cannot read directories: "+err.Error())
-			}
-			dirs[in.ID] = d
-		}
 		for i := range insts {
 			arr := &insts[i]
 			if cat.Apps[arr.Kind].API.RootFolders == "" {
