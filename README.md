@@ -15,7 +15,7 @@ go test ./...                 # replays an Umbrel-shaped docker API fixture, no 
 go run ./cmd/arrglue scan     # local Docker socket (DOCKER_HOST honoured); -json for machine output
 go run ./cmd/arrglue doctor   # APPS / ROUTES / PATHS / LINKS sections, exit 1 on any error
 go run ./cmd/arrglue plan     # Terraform-style diff of the links, writes nothing
-go run ./cmd/arrglue apply    # asks before writing (-yes to skip, -adopt to take over hand-made objects)
+go run ./cmd/arrglue apply    # asks before writing (--yes to skip, --adopt to take over hand-made objects)
 ```
 
 ## Test beds

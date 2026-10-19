@@ -70,7 +70,7 @@ func (t *seerrArr) test(ctx context.Context, key string) (obj, error) {
 	return res, err
 }
 
-const notSetUp = "Seerr is not set up yet: finish its setup wizard once (it needs your Jellyfin login), arrglue takes over the rest"
+const notSetUp = "Seerr setup wizard not done yet (needs your Jellyfin login once)"
 
 // initialized reports whether Seerr's first-run wizard is done (its API refuses everything before).
 func initialized(ctx context.Context, a api) (bool, error) {
@@ -106,7 +106,7 @@ func (t *seerrArr) Plan(ctx context.Context, adopt bool) ([]Change, error) {
 	}
 	create := o == nil
 	if !create && !strings.HasPrefix(fmt.Sprint(o["name"]), seerrPrefix) && !adopt {
-		return []Change{{Link: t.link, Op: "skip", What: t.What(), Detail: fmt.Sprintf("%q exists but is not managed by arrglue (no %q prefix); left untouched, use -adopt to take it over", o["name"], strings.TrimSpace(seerrPrefix))}}, nil
+		return []Change{{Link: t.link, Op: "skip", What: t.What(), Detail: fmt.Sprintf("%q exists without the %s prefix", o["name"], strings.TrimSpace(seerrPrefix))}}, nil
 	}
 	seen, err := t.test(ctx, t.key) // what the app offers, through Seerr
 	if err != nil {

@@ -22,7 +22,7 @@ func Plan(ctx context.Context, env *connector.Env, cat *catalog.Catalog, insts [
 				continue
 			}
 			if env.URL(nil, from) == "" {
-				out = append(out, connector.Change{Link: from.Name + " -> " + to.Name, Op: "skip", What: "link", Detail: "arrglue cannot reach " + from.Name + " to read or write its API (see doctor)"})
+				out = append(out, connector.Change{Link: from.Name + " -> " + to.Name, Op: "skip", What: "link", Detail: "arrglue cannot reach " + from.Name + "'s API (see doctor)"})
 				continue
 			}
 			t, skip := c.Target(env, from, to)

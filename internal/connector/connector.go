@@ -275,7 +275,7 @@ func (t *servarrTarget) upsert(ctx context.Context, adopt bool) ([]Change, error
 		op, force, why := "update", false, ""
 		if !o.hasTag(tag) {
 			if !adopt {
-				return []Change{{Link: link, Op: "skip", What: what, Detail: fmt.Sprintf("%q exists but is not managed by arrglue (no %s tag); left untouched, use -adopt to take it over", o["name"], Tag)}}, nil
+				return []Change{{Link: link, Op: "skip", What: what, Detail: fmt.Sprintf("%q exists without the %s tag", o["name"], Tag)}}, nil
 			}
 			op, force = "adopt", true
 		} else if err := t.testObj(ctx, o); err != nil {
