@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -154,11 +155,30 @@ func (a *App) ReadConfig(file string) (map[string]string, error) {
 	return out, nil
 }
 
-// ReadSecrets runs the catalog's SQLite query against a read-only view of the
-// database (immutable: the app may hold it open in WAL mode) and returns every
-// key it yields, best first. The caller keeps the one the app accepts.
+// ReadSecrets runs the catalog's SQLite query and returns every key it
+// yields, best first; the caller keeps the one the app accepts. The app may
+// hold the database open in WAL mode, with recent rows only in the -wal
+// journal and the directory mounted read-only: the files are copied to a
+// temporary directory and opened there, so the journal is replayed.
 func (a *App) ReadSecrets(file string) ([]string, error) {
-	db, err := sql.Open("sqlite", "file:"+file+"?mode=ro&immutable=1")
+	dir, err := os.MkdirTemp("", "arrglue-db")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		b, err := os.ReadFile(file + suffix)
+		if err != nil {
+			if suffix == "" {
+				return nil, err
+			}
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, "db"+suffix), b, 0o600); err != nil {
+			return nil, err
+		}
+	}
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "db"))
 	if err != nil {
 		return nil, err
 	}
