@@ -1,0 +1,14 @@
+kind: lingarr
+family: subtitles
+detect:
+  images: ["*/lingarr", "lingarr"]
+links: [radarr, sonarr]
+ports: { http: 9876 }
+config:
+  paths: []
+  format: json
+  # Lingarr encrypts its api key: paste it in --secrets, or disable auth in Lingarr
+  fields: { api_key: "" }
+health:
+  path: /api/version
+  version_field: currentVersion

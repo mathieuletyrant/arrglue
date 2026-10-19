@@ -156,36 +156,85 @@ func (a *App) ReadConfig(file string) (map[string]string, error) {
 	return out, nil
 }
 
+// QueryDB runs a read-only query against an app's SQLite database (copied with
+// its WAL journal, see ReadSecrets) and returns the rows as maps.
+func QueryDB(file, query string) ([]map[string]any, error) {
+	dir, db, err := openCopy(file)
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	defer db.Close()
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", file, err)
+	}
+	defer rows.Close()
+	cols, _ := rows.Columns()
+	var out []map[string]any
+	for rows.Next() {
+		vals := make([]any, len(cols))
+		ptrs := make([]any, len(cols))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, err
+		}
+		m := map[string]any{}
+		for i, c := range cols {
+			if b, ok := vals[i].([]byte); ok {
+				vals[i] = string(b)
+			}
+			m[c] = vals[i]
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// openCopy copies a database, its -wal and -shm to a temp dir and opens it there.
+func openCopy(file string) (dir string, db *sql.DB, err error) {
+	dir, err = os.MkdirTemp("", "arrglue-db")
+	if err != nil { // FROM scratch has no /tmp: the container layer itself is writable
+		dir, err = os.MkdirTemp("/", "arrglue-db")
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		b, err := os.ReadFile(file + suffix)
+		if err != nil {
+			if suffix == "" {
+				os.RemoveAll(dir)
+				return "", nil, err
+			}
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, "db"+suffix), b, 0o600); err != nil {
+			os.RemoveAll(dir)
+			return "", nil, err
+		}
+	}
+	db, err = sql.Open("sqlite", "file:"+filepath.Join(dir, "db"))
+	if err != nil {
+		os.RemoveAll(dir)
+		return "", nil, err
+	}
+	return dir, db, nil
+}
+
 // ReadSecrets runs the catalog's SQLite query and returns every key it
 // yields, best first; the caller keeps the one the app accepts. The app may
 // hold the database open in WAL mode, with recent rows only in the -wal
 // journal and the directory mounted read-only: the files are copied to a
 // temporary directory and opened there, so the journal is replayed.
 func (a *App) ReadSecrets(file string) ([]string, error) {
-	dir, err := os.MkdirTemp("", "arrglue-db")
-	if err != nil { // FROM scratch has no /tmp: the container layer itself is writable
-		dir, err = os.MkdirTemp("/", "arrglue-db")
-	}
+	dir, db, err := openCopy(file)
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
-	for _, suffix := range []string{"", "-wal", "-shm"} {
-		b, err := os.ReadFile(file + suffix)
-		if err != nil {
-			if suffix == "" {
-				return nil, err
-			}
-			continue
-		}
-		if err := os.WriteFile(filepath.Join(dir, "db"+suffix), b, 0o600); err != nil {
-			return nil, err
-		}
-	}
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "db"))
-	if err != nil {
-		return nil, err
-	}
 	defer db.Close()
 	rows, err := db.Query(a.Secret.SQLite)
 	if err != nil {

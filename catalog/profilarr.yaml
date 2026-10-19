@@ -1,0 +1,12 @@
+kind: profilarr
+family: tools
+detect:
+  images: ["*/profilarr", "profilarr"]
+links: [radarr, sonarr]
+ports: { http: 6868 }
+config:
+  paths: []
+  format: json
+# no key needed: its public API is read-only anyway, arrglue reads its database instead
+health:
+  path: /api/v1/health

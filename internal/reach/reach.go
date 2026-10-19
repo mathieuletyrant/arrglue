@@ -151,11 +151,21 @@ func probe(ctx context.Context, base string, app *catalog.App, key string) (stri
 	if app.Health.VersionField == "raw" { // plain-text body
 		return strings.TrimSpace(strings.Trim(string(b), "\"")), nil
 	}
-	var body map[string]any
-	if json.Unmarshal(b, &body) == nil && body[app.Health.VersionField] != nil {
-		return fmt.Sprint(body[app.Health.VersionField]), nil
+	var body any
+	if json.Unmarshal(b, &body) != nil {
+		return "", nil
 	}
-	return "", nil
+	for _, k := range strings.Split(app.Health.VersionField, ".") { // "data.bazarr_version"
+		m, ok := body.(map[string]any)
+		if !ok {
+			return "", nil
+		}
+		body = m[k]
+	}
+	if body == nil {
+		return "", nil
+	}
+	return fmt.Sprint(body), nil
 }
 
 // Self probes `to` from arrglue's own vantage (self) and returns the working

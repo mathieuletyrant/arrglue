@@ -48,6 +48,9 @@ LINKS   what the apps have configured, tested by the apps themselves
 | Maintainerr | API | → Radarr, Sonarr, → Jellyfin (first admin user), → Seerr |
 | Healarr | key from `--secrets` (encrypted at rest) | → Radarr, Sonarr (*arr instances) |
 | Spotarr | `API_TOKEN` env | → Seerr, → Jellyfin (settings sections) |
+| Bazarr | `config.yaml` | → Sonarr, Radarr (connections, tested through Bazarr's status) |
+| Lingarr | key from `--secrets` unless its auth is off | → Radarr, Sonarr (settings) |
+| Profilarr | reads its database | → Radarr, Sonarr: **manual**, its public API cannot write instances |
 | cross-seed | `config.js` | → Prowlarr (torznab per indexer), Radarr, Sonarr, Transmission: **manual**, plan prints the exact lines |
 
 Adding an app that only needs discovery is a YAML file in [`catalog/`](catalog/): image patterns,

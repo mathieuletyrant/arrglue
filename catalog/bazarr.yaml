@@ -1,0 +1,19 @@
+kind: bazarr
+family: subtitles
+detect:
+  images: ["*/bazarr", "bazarr"]
+  binaries: [bazarr.py]
+  systemd: [bazarr.service]
+links: [sonarr, radarr]
+ports: { http: 6767 }
+config:
+  paths: [/config/config/config.yaml, /config/config.yaml, ~/.config/bazarr/config/config.yaml]
+  format: yaml
+  fields:
+    api_key: /auth/apikey
+    port: /general/port
+    url_base: /general/base_url
+health:
+  path: /api/system/status
+  auth: { header: X-API-KEY }
+  version_field: data.bazarr_version

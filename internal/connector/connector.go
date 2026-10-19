@@ -61,7 +61,7 @@ type Target interface {
 	Test(ctx context.Context) (found bool, err error) // ask the caller to test the existing object
 }
 
-var All = []Connector{prowlarr{}, downloadClient{}, seerr{}, mediaNotify{}, maintainerr{}, healarr{}, cleanuparr{}, spotarr{}, crossSeed{}}
+var All = []Connector{prowlarr{}, downloadClient{}, seerr{}, mediaNotify{}, maintainerr{}, healarr{}, cleanuparr{}, spotarr{}, crossSeed{}, bazarr{}, lingarr{}, profilarr{}}
 
 // servarrTarget is a Servarr-style object (download client, application...):
 // {implementation, fields: [{name, value}], tags}, with /schema and /test.
@@ -239,6 +239,27 @@ func (a api) do(ctx context.Context, method, path string, in, out any) error {
 	}
 	if out != nil && len(b) > 0 {
 		return json.Unmarshal(b, out)
+	}
+	return nil
+}
+
+// form posts application/x-www-form-urlencoded values (Bazarr saves settings that way).
+func (a api) form(ctx context.Context, path string, values url.Values) error {
+	req, _ := http.NewRequestWithContext(ctx, "POST", a.base+a.prefix+path, strings.NewReader(values.Encode()))
+	for k, v := range a.headers {
+		if v != "" {
+			req.Header.Set(k, v)
+		}
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if res.StatusCode/100 != 2 {
+		return fmt.Errorf("POST %s: %s: %s", path, res.Status, strings.TrimSpace(string(b)))
 	}
 	return nil
 }
