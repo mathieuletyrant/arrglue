@@ -201,29 +201,31 @@ func readSecret(inst *graph.Instance, app *catalog.App) {
 	if inst.Secret.Value != "" || app.Secret.SQLite == "" {
 		return
 	}
-	// several candidate databases may exist (old and new layouts): the live
-	// one is the most recently written
-	var file string
+	// several candidate databases may exist (old and new layouts, migrations
+	// leaving stale copies): ask each one, keep the most recently written answer
 	var newest time.Time
+	var lastErr error
 	for _, p := range app.Secret.Paths {
 		h, ok := inst.ToHost(p)
 		if !ok {
 			continue
 		}
-		if fi, err := os.Stat(h); err == nil && fi.ModTime().After(newest) {
-			file, newest = h, fi.ModTime()
+		fi, err := os.Stat(h)
+		if err != nil {
+			continue
+		}
+		key, err := app.ReadSecret(h)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if key != "" && fi.ModTime().After(newest) {
+			newest = fi.ModTime()
+			inst.Secret = graph.SecretRef{Source: "sqlite:" + h, Value: key}
 		}
 	}
-	if file == "" {
-		return
-	}
-	key, err := app.ReadSecret(file)
-	if err != nil {
-		inst.Errors = append(inst.Errors, err.Error())
-		return
-	}
-	if key != "" {
-		inst.Secret = graph.SecretRef{Source: "sqlite:" + file, Value: key}
+	if inst.Secret.Value == "" && lastErr != nil {
+		inst.Errors = append(inst.Errors, lastErr.Error())
 	}
 }
 
