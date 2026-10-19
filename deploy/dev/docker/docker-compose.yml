@@ -1,0 +1,30 @@
+# Plain-Docker test bed: the usual home setup. Apps on a private bridge with
+# published ports, separate /downloads and /movies mounts (hardlink trap).
+#
+#   docker compose up -d
+#   go run ./cmd/arrglue doctor          # from the host: published ports 17878/19696/19091
+#   docker run --rm --network arr-dev_arr -v /var/run/docker.sock:/var/run/docker.sock:ro \
+#     -v $PWD/data:$PWD/data:ro arrglue:dev doctor   # from inside the bridge
+name: arr-dev
+x-app: &app
+  restart: unless-stopped
+  environment: { PUID: "1000", PGID: "1000", TZ: Europe/Paris }
+  networks: [arr]
+services:
+  radarr:
+    <<: *app
+    image: linuxserver/radarr:latest
+    ports: ["17878:7878"]
+    volumes: [./data/radarr:/config, ./data/downloads:/downloads, ./data/movies:/movies]
+  prowlarr:
+    <<: *app
+    image: linuxserver/prowlarr:latest
+    ports: ["19696:9696"]
+    volumes: [./data/prowlarr:/config]
+  transmission:
+    <<: *app
+    image: linuxserver/transmission:latest
+    ports: ["19091:9091"]
+    volumes: [./data/transmission:/config, ./data/downloads:/downloads]
+networks:
+  arr: {}

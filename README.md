@@ -17,7 +17,20 @@ go run ./cmd/arrglue plan     # Terraform-style diff of the links, writes nothin
 go run ./cmd/arrglue apply    # asks before writing (-yes to skip, -adopt to take over hand-made objects)
 ```
 
-## Testing against a real umbrelOS
+## Test beds
+
+### Plain Docker (bridge network, published ports, separate mounts)
+
+```sh
+cd deploy/dev/docker && docker compose up -d && cd -
+go run ./cmd/arrglue doctor      # host vantage: 127.0.0.1:<published port>
+go run ./cmd/arrglue plan
+docker build -t arrglue:dev . && docker run --rm --network arr-dev_arr \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v $PWD/deploy/dev/docker/data:$PWD/deploy/dev/docker/data:ro arrglue:dev doctor   # container vantage
+```
+
+### Real umbrelOS in Docker
 
 umbrelOS runs fine inside Docker (`dockurr/umbrel`): umbreld spawns the apps as
 sibling containers on the host's Docker, on `umbrel_main_network`, with app-data

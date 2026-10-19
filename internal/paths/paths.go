@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -79,14 +80,21 @@ func do(hc *http.Client, req *http.Request, out any) error {
 	return json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(out)
 }
 
-// Device returns the filesystem id of a host path; used to tell whether two
-// paths can be hardlinked. Injected so tests run without the real tree.
+// Device returns the filesystem id of a host path (or of its nearest existing
+// parent: the dir may not be created yet, the filesystem is what matters).
+// Injected so tests run without the real tree.
 var Device = func(p string) (uint64, error) {
-	fi, err := os.Stat(p)
-	if err != nil {
-		return 0, err
+	for {
+		fi, err := os.Stat(p)
+		if err == nil {
+			return uint64(fi.Sys().(*syscall.Stat_t).Dev), nil
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return 0, err
+		}
+		p = parent
 	}
-	return uint64(fi.Sys().(*syscall.Stat_t).Dev), nil
 }
 
 // Check compares the download client's dir with each root folder of the servarr app.
