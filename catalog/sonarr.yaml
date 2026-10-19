@@ -4,6 +4,7 @@ detect:
   images: ["*/sonarr", "sonarr"]
   binaries: [Sonarr]
   systemd: [sonarr.service]
+links: [prowlarr, transmission, jellyfin]   # kinds this app talks to
 ports: { http: 8989 }
 config:
   paths: [/config/config.xml, ~/.config/Sonarr/config.xml, /var/lib/sonarr/config.xml]
@@ -21,3 +22,4 @@ health:
   version_field: version
 api:
   versions: [v3]
+  root_folders: /api/v3/rootfolder

@@ -56,17 +56,57 @@ func (i *Instance) PublishedPort(p int) int {
 	return 0
 }
 
-// ToHost translates a path as seen by the app into a host path, using the
-// longest matching mount. ok=false if no mount covers it.
-func (i *Instance) ToHost(p string) (string, bool) {
-	best := Mount{}
-	for _, m := range i.Mounts {
-		if (p == m.App || strings.HasPrefix(p, strings.TrimSuffix(m.App, "/")+"/")) && len(m.App) > len(best.App) {
+// MountFor returns the longest mount whose app path covers p (nil if none).
+func (i *Instance) MountFor(p string) *Mount {
+	var best *Mount
+	for k := range i.Mounts {
+		m := &i.Mounts[k]
+		if under(p, m.App) && (best == nil || len(m.App) > len(best.App)) {
 			best = m
 		}
 	}
-	if best.App == "" {
+	return best
+}
+
+// ToHost translates a path as seen by the app into a host path.
+func (i *Instance) ToHost(p string) (string, bool) {
+	m := i.MountFor(p)
+	if m == nil {
 		return "", false
 	}
-	return best.Host + strings.TrimPrefix(p, strings.TrimSuffix(best.App, "/")), true
+	return join(m.Host, m.App, p), true
+}
+
+// FromHost translates a host path into the path the app sees, ok=false if the app cannot see it.
+func (i *Instance) FromHost(h string) (string, bool) {
+	var best *Mount
+	for k := range i.Mounts {
+		m := &i.Mounts[k]
+		if under(h, m.Host) && (best == nil || len(m.Host) > len(best.Host)) {
+			best = m
+		}
+	}
+	if best == nil {
+		return "", false
+	}
+	return join(best.App, best.Host, h), true
+}
+
+// Translate maps a path seen by a into the same path seen by b.
+func Translate(a, b *Instance, p string) (string, bool) {
+	h, ok := a.ToHost(p)
+	if !ok {
+		return "", false
+	}
+	return b.FromHost(h)
+}
+
+func under(p, dir string) bool {
+	dir = strings.TrimSuffix(dir, "/")
+	return p == dir || strings.HasPrefix(p, dir+"/")
+}
+
+// join swaps prefix `from` of p for `to`.
+func join(to, from, p string) string {
+	return strings.TrimSuffix(to, "/") + strings.TrimPrefix(p, strings.TrimSuffix(from, "/"))
 }

@@ -3,7 +3,8 @@
 Discovers the *arr stack wherever it runs, works out how each app can reach the
 others, and wires them together through their APIs. Spec: [SPEC.md](SPEC.md).
 
-Status: roadmap step 1 — catalog + Docker provider + read-only `scan` / `doctor`.
+Status: roadmap step 2 — catalog + Docker provider, read-only `scan` / `doctor` with
+per-pair reachability and path / hardlink checks.
 Catalog covers radarr, sonarr, prowlarr, transmission, jellyfin, seerr (jellyseerr/overseerr).
 
 ```sh
@@ -44,7 +45,7 @@ On the Umbrel, open Settings → Advanced → Terminal and run:
 ```sh
 docker run --rm --pull always --network umbrel_main_network \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v /home/umbrel/umbrel/app-data:/home/umbrel/umbrel/app-data:ro \
+  -v /home/umbrel/umbrel:/home/umbrel/umbrel:ro \
   ghcr.io/mathieuletyrant/arrglue doctor
 ```
 

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Run arrglue the way the Umbrel app will: inside umbrel_main_network, Docker
-# socket read-only, app-data mounted at its host path so Docker's mount sources
+# socket read-only, umbrel data root mounted at its host path so Docker's mount sources
 # are readable as-is. Targets an umbrelOS-in-Docker instance (dockurr/umbrel).
 #
 #   deploy/dev/umbrel.sh scan
@@ -14,5 +14,5 @@ DATA=$(docker inspect "$UMBREL" --format '{{range .Mounts}}{{if eq .Destination 
 docker build -q -t arrglue:dev . >/dev/null
 exec docker run --rm --network umbrel_main_network \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v "$DATA/app-data:$DATA/app-data:ro" \
+  -v "$DATA:$DATA:ro" \
   arrglue:dev "$@"

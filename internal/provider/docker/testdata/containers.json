@@ -21,7 +21,7 @@
    "HostConfig":{"NetworkMode":"umbrel_main_network"},
    "NetworkSettings":{"Networks":{"umbrel_main_network":{"IPAddress":"10.21.0.13","Aliases":["transmission_server_1"]}}},
    "Mounts":[{"Type":"bind","Source":"/home/umbrel/umbrel/app-data/transmission/data/config","Destination":"/config"},{"Type":"bind","Source":"/home/umbrel/umbrel/data/storage/downloads","Destination":"/downloads"}],
-   "Ports":[{"IP":"0.0.0.0","PrivatePort":51413,"PublicPort":51413,"Type":"tcp"}]},
+   "Ports":[{"IP":"0.0.0.0","PrivatePort":51413,"PublicPort":51413,"Type":"tcp"},{"IP":"::","PrivatePort":51413,"PublicPort":51413,"Type":"tcp"}]},
   {"Id":"a5","Names":["/jellyfin_server_1"],"Image":"linuxserver/jellyfin:10.10.3","Labels":{},"State":"running",
    "HostConfig":{"NetworkMode":"umbrel_main_network"},
    "NetworkSettings":{"Networks":{"umbrel_main_network":{"IPAddress":"10.21.0.14","Aliases":["jellyfin_server_1"]}}},

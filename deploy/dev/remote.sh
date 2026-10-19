@@ -13,5 +13,5 @@ CGO_ENABLED=0 GOOS=linux GOARCH=$GOARCH go build -trimpath -ldflags='-s -w' -o /
 scp -q /tmp/arrglue-linux "$HOST:/tmp/arrglue"
 ssh -t "$HOST" "docker run --rm --network umbrel_main_network \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v /home/umbrel/umbrel/app-data:/home/umbrel/umbrel/app-data:ro \
+  -v /home/umbrel/umbrel:/home/umbrel/umbrel:ro \
   -v /tmp/arrglue:/arrglue:ro alpine:3.20 /arrglue $*"

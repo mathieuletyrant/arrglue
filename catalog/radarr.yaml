@@ -4,6 +4,7 @@ detect:
   images: ["*/radarr", "radarr"]
   binaries: [Radarr]
   systemd: [radarr.service]
+links: [prowlarr, transmission, jellyfin]   # kinds this app talks to
 ports: { http: 7878 }
 config:
   paths: [/config/config.xml, ~/.config/Radarr/config.xml, /var/lib/radarr/config.xml]
@@ -21,3 +22,4 @@ health:
   version_field: version
 api:
   versions: [v3]
+  root_folders: /api/v3/rootfolder

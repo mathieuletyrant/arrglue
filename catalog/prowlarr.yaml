@@ -4,6 +4,7 @@ detect:
   images: ["*/prowlarr", "prowlarr"]
   binaries: [Prowlarr]
   systemd: [prowlarr.service]
+links: [radarr, sonarr]   # kinds this app talks to
 ports: { http: 9696 }
 config:
   paths: [/config/config.xml, ~/.config/Prowlarr/config.xml, /var/lib/prowlarr/config.xml]

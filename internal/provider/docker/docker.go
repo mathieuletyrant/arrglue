@@ -106,9 +106,12 @@ func (c *Client) Discover(ctx context.Context, cat *catalog.Catalog) ([]graph.In
 			inst.Aliases = append(inst.Aliases, net.Aliases...)
 		}
 		sort.Strings(inst.Networks)
+		seen := map[graph.Port]bool{} // same port is listed once per bound IP (v4, v6)
 		for _, p := range ct.Ports {
-			if p.Type == "tcp" {
-				inst.Ports = append(inst.Ports, graph.Port{Internal: p.PrivatePort, Published: p.PublicPort})
+			port := graph.Port{Internal: p.PrivatePort, Published: p.PublicPort}
+			if p.Type == "tcp" && !seen[port] {
+				seen[port] = true
+				inst.Ports = append(inst.Ports, port)
 			}
 		}
 		for _, m := range ct.Mounts {
@@ -146,4 +149,32 @@ func readConfig(inst *graph.Instance, app *catalog.App) {
 		inst.Secret = graph.SecretRef{Source: "file:" + f + "#api_key", Value: k}
 	}
 	inst.Config = fields
+}
+
+// Self describes arrglue's own vantage point: the container it runs in (found
+// by hostname = container id), or a host-network pseudo instance when native.
+func (c *Client) Self(ctx context.Context) *graph.Instance {
+	self := &graph.Instance{ID: "arrglue", Name: "arrglue", Networks: []string{"host"}}
+	host, _ := os.Hostname()
+	if _, err := os.Stat("/.dockerenv"); err != nil || host == "" {
+		return self
+	}
+	cs, err := c.list(ctx)
+	if err != nil {
+		return self
+	}
+	for _, ct := range cs {
+		if strings.HasPrefix(ct.ID, host) {
+			self.Name = strings.TrimPrefix(ct.Names[0], "/")
+			self.Networks = nil
+			if ct.HostConfig.NetworkMode == "host" {
+				self.Networks = []string{"host"}
+			}
+			for n := range ct.NetworkSettings.Networks {
+				self.Networks = append(self.Networks, n)
+			}
+			sort.Strings(self.Networks)
+		}
+	}
+	return self
 }

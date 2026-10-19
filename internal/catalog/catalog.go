@@ -26,6 +26,7 @@ type App struct {
 		Binaries []string `yaml:"binaries"`
 		Systemd  []string `yaml:"systemd"`
 	} `yaml:"detect"`
+	Links  []string       `yaml:"links"` // kinds this app connects to
 	Ports  map[string]int `yaml:"ports"`
 	Config struct {
 		Paths  []string          `yaml:"paths"`
@@ -44,7 +45,8 @@ type App struct {
 		OK           []int  `yaml:"ok"` // accepted statuses, default [200]
 	} `yaml:"health"`
 	API struct {
-		Versions []string `yaml:"versions"`
+		Versions    []string `yaml:"versions"`
+		RootFolders string   `yaml:"root_folders"` // GET endpoint listing {path} objects
 	} `yaml:"api"`
 }
 

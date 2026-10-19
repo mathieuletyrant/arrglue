@@ -69,7 +69,7 @@ func TestDiscover(t *testing.T) {
 	if got[by["docker:jellyfin_server_1"]].Config["port"] != "8096" {
 		t.Errorf("jellyfin: %+v", got[by["docker:jellyfin_server_1"]])
 	}
-	if got[by["docker:transmission_server_1"]].Config["auth_required"] != "false" {
+	if tr := got[by["docker:transmission_server_1"]]; tr.Config["auth_required"] != "false" || len(tr.Ports) != 1 {
 		t.Errorf("transmission: %+v", got[by["docker:transmission_server_1"]])
 	}
 	if len(got[by["docker:custom_arr_1"]].Errors) == 0 {

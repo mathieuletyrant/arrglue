@@ -2,6 +2,7 @@ kind: seerr
 family: seerr
 detect:
   images: ["*/seerr", "*/jellyseerr", "*/overseerr", "seerr", "jellyseerr", "overseerr"]
+links: [jellyfin, radarr, sonarr]   # kinds this app talks to
 ports: { http: 5055 }
 config:
   paths: [/app/config/settings.json, /config/settings.json]
