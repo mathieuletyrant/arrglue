@@ -162,6 +162,9 @@ func (a *App) ReadConfig(file string) (map[string]string, error) {
 // temporary directory and opened there, so the journal is replayed.
 func (a *App) ReadSecrets(file string) ([]string, error) {
 	dir, err := os.MkdirTemp("", "arrglue-db")
+	if err != nil { // FROM scratch has no /tmp: the container layer itself is writable
+		dir, err = os.MkdirTemp("/", "arrglue-db")
+	}
 	if err != nil {
 		return nil, err
 	}
