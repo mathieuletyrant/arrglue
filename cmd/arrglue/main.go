@@ -171,7 +171,9 @@ func load(ctx context.Context, withDirs bool) (*state, error) {
 	}
 	if secretsFile != "" {
 		b, err := os.ReadFile(secretsFile)
-		if err != nil {
+		if os.IsNotExist(err) {
+			b = nil // optional: the file appears when the user has a key to hand over
+		} else if err != nil {
 			return nil, err
 		}
 		manual := map[string]string{}
