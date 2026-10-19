@@ -1,0 +1,8 @@
+<Config>
+  <BindAddress>*</BindAddress>
+  <Port>8989</Port>
+  <ApiKey>0123456789abcdef0123456789abcdef</ApiKey>
+  <AuthenticationMethod>Forms</AuthenticationMethod>
+  <UrlBase></UrlBase>
+  <InstanceName>Sonarr</InstanceName>
+</Config>

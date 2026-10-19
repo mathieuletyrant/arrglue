@@ -1,0 +1,23 @@
+kind: sonarr
+family: servarr
+detect:
+  images: ["*/sonarr", "sonarr"]
+  binaries: [Sonarr]
+  systemd: [sonarr.service]
+ports: { http: 8989 }
+config:
+  paths: [/config/config.xml, ~/.config/Sonarr/config.xml, /var/lib/sonarr/config.xml]
+  format: xml
+  fields:
+    api_key: /Config/ApiKey
+    port: /Config/Port
+    url_base: /Config/UrlBase
+inject:
+  env:
+    api_key: SONARR__AUTH__APIKEY
+health:
+  path: /api/v3/system/status
+  auth: { header: X-Api-Key }
+  version_field: version
+api:
+  versions: [v3]

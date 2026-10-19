@@ -1,0 +1,18 @@
+kind: transmission
+family: downloader
+detect:
+  images: ["*/transmission", "transmission"]
+  binaries: [transmission-daemon]
+  systemd: [transmission-daemon.service]
+ports: { http: 9091 }
+config:
+  paths: [/config/settings.json, ~/.config/transmission-daemon/settings.json]
+  format: json
+  fields:
+    port: /rpc-port
+    url_base: /rpc-url
+    username: /rpc-username
+    auth_required: /rpc-authentication-required
+health:
+  path: rpc
+  ok: [200, 409]   # 409 = alive, wants X-Transmission-Session-Id

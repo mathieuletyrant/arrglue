@@ -1,0 +1,23 @@
+kind: prowlarr
+family: servarr
+detect:
+  images: ["*/prowlarr", "prowlarr"]
+  binaries: [Prowlarr]
+  systemd: [prowlarr.service]
+ports: { http: 9696 }
+config:
+  paths: [/config/config.xml, ~/.config/Prowlarr/config.xml, /var/lib/prowlarr/config.xml]
+  format: xml
+  fields:
+    api_key: /Config/ApiKey
+    port: /Config/Port
+    url_base: /Config/UrlBase
+inject:
+  env:
+    api_key: PROWLARR__AUTH__APIKEY
+health:
+  path: /api/v1/system/status
+  auth: { header: X-Api-Key }
+  version_field: version
+api:
+  versions: [v1]

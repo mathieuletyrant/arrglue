@@ -1,0 +1,14 @@
+kind: seerr
+family: seerr
+detect:
+  images: ["*/seerr", "*/jellyseerr", "*/overseerr", "seerr", "jellyseerr", "overseerr"]
+ports: { http: 5055 }
+config:
+  paths: [/app/config/settings.json, /config/settings.json]
+  format: json
+  fields:
+    api_key: /main/apiKey
+health:
+  path: /api/v1/status
+  auth: { header: X-Api-Key }
+  version_field: version

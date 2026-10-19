@@ -1,0 +1,18 @@
+kind: jellyfin
+family: media
+detect:
+  images: ["*/jellyfin", "jellyfin"]
+  binaries: [jellyfin]
+  systemd: [jellyfin.service]
+ports: { http: 8096 }
+config:
+  # linuxserver: config dir = /config ; official image: /config/config
+  paths: [/config/network.xml, /config/config/network.xml, /etc/jellyfin/network.xml]
+  format: xml
+  fields:
+    port: /NetworkConfiguration/InternalHttpPort
+    url_base: /NetworkConfiguration/BaseUrl
+# no api_key on disk: keys live in jellyfin.db (ApiKeys table) -> read later via sqlite, or manual
+health:
+  path: /System/Info/Public
+  version_field: Version

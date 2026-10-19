@@ -1,0 +1,8 @@
+<Config>
+  <BindAddress>*</BindAddress>
+  <Port>9696</Port>
+  <ApiKey>0123456789abcdef0123456789abcdef</ApiKey>
+  <AuthenticationMethod>Forms</AuthenticationMethod>
+  <UrlBase></UrlBase>
+  <InstanceName>Prowlarr</InstanceName>
+</Config>

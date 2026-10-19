@@ -1,0 +1,23 @@
+kind: radarr
+family: servarr
+detect:
+  images: ["*/radarr", "radarr"]
+  binaries: [Radarr]
+  systemd: [radarr.service]
+ports: { http: 7878 }
+config:
+  paths: [/config/config.xml, ~/.config/Radarr/config.xml, /var/lib/radarr/config.xml]
+  format: xml
+  fields:
+    api_key: /Config/ApiKey
+    port: /Config/Port
+    url_base: /Config/UrlBase
+inject:
+  env:
+    api_key: RADARR__AUTH__APIKEY
+health:
+  path: /api/v3/system/status
+  auth: { header: X-Api-Key }
+  version_field: version
+api:
+  versions: [v3]
