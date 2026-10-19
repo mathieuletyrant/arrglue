@@ -56,7 +56,7 @@ func TestSeerr(t *testing.T) {
 		if from == nil {
 			return srv.URL
 		}
-		return "http://radarr_server_1:7878"
+		return map[string]string{"radarr": "http://radarr_server_1:7878", "jellyfin": "http://jellyfin_server_1:8096"}[to.Kind]
 	}}
 	ctx := context.Background()
 	target := func() Target {
@@ -94,5 +94,43 @@ func TestSeerr(t *testing.T) {
 	ch, _ = target().Plan(ctx, true)
 	if ch[0].Op != "adopt" || ch[0].Apply(ctx) != nil || servers[0]["name"] != "[arrglue] Radarr" || servers[0]["apiKey"] != "radkey" {
 		t.Fatalf("adopt: %+v -> %+v", ch, servers[0])
+	}
+}
+
+func TestSeerrMedia(t *testing.T) {
+	// reuse TestSeerr's server shape through a tiny inline fake
+	var put obj
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/settings/public":
+			w.Write([]byte(`{"initialized":true}`))
+		case r.URL.Path == "/api/v1/settings/jellyfin" && r.Method == "GET":
+			w.Write([]byte(`{"name":"Jellyfin","ip":"10.21.0.14","port":8096,"useSsl":false,"urlBase":"","libraries":[],"serverId":"abc"}`))
+		case r.URL.Path == "/api/v1/settings/jellyfin" && r.Method == "PUT":
+			json.NewDecoder(r.Body).Decode(&put)
+			json.NewEncoder(w).Encode(put)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	cat, _ := catalog.Load("")
+	net := []string{"umbrel_main_network"}
+	se := &graph.Instance{ID: "docker:seerr", Kind: "seerr", Name: "jellyseerr_server_1", Networks: net, Secret: graph.SecretRef{Value: "k"}}
+	jf := &graph.Instance{ID: "docker:jellyfin", Kind: "jellyfin", Name: "jellyfin_server_1", Networks: net, Config: map[string]string{"port": "8096"}}
+	env := &Env{Cat: cat, URL: func(from, to *graph.Instance) string {
+		if from == nil {
+			return srv.URL
+		}
+		return "http://jellyfin_server_1:8096"
+	}}
+	ctx := context.Background()
+	tg, _ := seerr{}.Target(env, se, jf)
+	if found, err := tg.Test(ctx); !found || err == nil || !strings.Contains(err.Error(), "ip: 10.21.0.14 -> jellyfin_server_1") {
+		t.Fatalf("test: %v %v", found, err)
+	}
+	ch, err := tg.Plan(ctx, false)
+	if err != nil || ch[0].Op != "update" || ch[0].Apply(ctx) != nil || put["ip"] != "jellyfin_server_1" || put["serverId"] != "abc" || put["hostname"] != nil {
+		t.Fatalf("plan/apply: %+v %v put=%+v", ch, err, put)
 	}
 }

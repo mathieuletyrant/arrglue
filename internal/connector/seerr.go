@@ -206,10 +206,16 @@ func (t *seerrMedia) current(ctx context.Context) (obj, error) {
 	return o, t.a.do(ctx, "GET", "/settings/jellyfin", nil, &o)
 }
 
+// want is the desired media server entry. Seerr's settings object calls the
+// host "ip" (only its auth wizard says "hostname").
+func (t *seerrMedia) want() map[string]any {
+	return map[string]any{"ip": t.host, "port": t.port, "useSsl": false, "urlBase": t.base}
+}
+
 func (t *seerrMedia) diff(o obj) []string {
 	var d []string
-	for k, v := range map[string]any{"hostname": t.host, "port": t.port, "useSsl": false, "urlBase": t.base} {
-		if fmt.Sprint(o[k]) != fmt.Sprint(v) {
+	for _, k := range []string{"ip", "port", "useSsl", "urlBase"} {
+		if v := t.want()[k]; fmt.Sprint(o[k]) != fmt.Sprint(v) {
 			d = append(d, fmt.Sprintf("  %s: %v -> %v", k, o[k], v))
 		}
 	}
@@ -242,7 +248,9 @@ func (t *seerrMedia) Plan(ctx context.Context, adopt bool) ([]Change, error) {
 	if len(d) == 0 {
 		return []Change{{Link: t.link, Op: "noop", What: t.What()}}, nil
 	}
-	o["hostname"], o["port"], o["useSsl"], o["urlBase"] = t.host, t.port, false, t.base
+	for k, v := range t.want() {
+		o[k] = v
+	}
 	return []Change{{Link: t.link, Op: "update", What: t.What(), Detail: strings.Join(d, "\n"), Apply: func(ctx context.Context) error {
 		return t.a.do(ctx, "PUT", "/settings/jellyfin", o, nil)
 	}}}, nil
