@@ -50,6 +50,9 @@ func (t *spotarrSlot) current(ctx context.Context) (obj, error) {
 
 const spotarrNoSection = "this Spotarr version has no such settings section"
 
+// Test compares what Spotarr stores with what it should hold: its own
+// CheckDependencies also calls the LLM, TMDB, yt-dlp and ffmpeg over the
+// internet, far too slow for a doctor run.
 func (t *spotarrSlot) Test(ctx context.Context) (bool, error) {
 	cur, err := t.current(ctx)
 	if err != nil {
@@ -61,18 +64,12 @@ func (t *spotarrSlot) Test(ctx context.Context) (bool, error) {
 	if cur["url"] == nil || cur["url"] == "" {
 		return false, nil
 	}
-	// CheckDependencies reports each integration's state with Spotarr's own words
-	var res struct {
-		Dependencies []struct{ Name, State, Detail string }
-	}
-	if err := t.a.do(ctx, "POST", "/CheckDependencies", obj{}, &res); err != nil {
-		return true, err
-	}
-	for _, d := range res.Dependencies {
-		if (d.Name == "Seerr" && t.section == "seerr") || (d.Name == "Jellyfin" && t.section == "jellyfin") {
-			if d.State != "DEPENDENCY_STATE_OK" {
-				return true, fmt.Errorf("%s: %s", d.State, d.Detail)
+	for k, v := range t.want {
+		if fmt.Sprint(cur[k]) != fmt.Sprint(v) {
+			if k == "apiKey" {
+				return true, fmt.Errorf("stored api key differs from %s's current key (run plan)", t.section)
 			}
+			return true, fmt.Errorf("stored %s is %v, expected %v (run plan)", k, cur[k], v)
 		}
 	}
 	return true, nil
