@@ -110,7 +110,7 @@ func TestProwlarr(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := store["/applications"][0]
-	if app["syncLevel"] != "fullSync" || app.field("prowlarrUrl") != "http://prowlarr_server_1:9696" || app.field("apiKey") != "radkey" || !app.hasTag(1) || app["name"] != "radarr_server_1" {
+	if app["syncLevel"] != "fullSync" || app.field("prowlarrUrl") != "http://prowlarr_server_1:9696" || app.field("apiKey") != "radkey" || len(app["tags"].([]any)) != 0 || app["name"] != "[arrglue] radarr_server_1" {
 		t.Fatalf("created: %+v", app)
 	}
 	if ch := plan(); len(ch) != 1 || ch[0].Op != "noop" {
@@ -143,14 +143,25 @@ func TestProwlarr(t *testing.T) {
 	if found, err := target().Test(ctx); !found || err == nil || !strings.Contains(err.Error(), "Unable to connect") {
 		t.Fatalf("test with wrong key should fail with the API message: found=%v err=%v", found, err)
 	}
-	// hand-made object without tag -> skip, unless adopting
-	store["/applications"][0]["tags"] = []any{}
+	// tagged by an older arrglue -> ours: the tag goes (it filters indexers), the prefix comes
+	store["/tag"] = []obj{{"id": 7.0, "label": "arrglue"}, {"id": 8.0, "label": "4k"}}
+	store["/applications"][0]["name"] = "radarr_server_1"
+	store["/applications"][0]["tags"] = []any{7.0, 8.0}
+	ch = plan()
+	if ch[0].Op != "update" || ch[0].Apply(ctx) != nil {
+		t.Fatalf("legacy tag: %+v", ch)
+	}
+	if app := store["/applications"][0]; app["name"] != "[arrglue] radarr_server_1" || len(app["tags"].([]any)) != 1 || app["tags"].([]any)[0] != 8.0 {
+		t.Fatalf("legacy tag not migrated: %+v", app)
+	}
+	// hand-made object -> skip, unless adopting
+	store["/applications"][0]["name"] = "Radarr"
 	if ch := plan(); ch[0].Op != "skip" {
 		t.Fatalf("unmanaged should skip: %+v", ch)
 	}
 	env.Adopt = true
 	ch = plan()
-	if ch[0].Op != "adopt" || ch[0].Apply(ctx) != nil || !store["/applications"][0].hasTag(1) {
-		t.Fatalf("adopt: %+v tags=%v", ch, store["/applications"][0]["tags"])
+	if ch[0].Op != "adopt" || ch[0].Apply(ctx) != nil || store["/applications"][0]["name"] != "[arrglue] Radarr" {
+		t.Fatalf("adopt: %+v name=%v", ch, store["/applications"][0]["name"])
 	}
 }

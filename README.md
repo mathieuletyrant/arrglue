@@ -28,7 +28,8 @@ LINKS   what the apps have configured, tested by the apps themselves
   the hardlink verdict (same filesystem, same mount); and every configured link, tested by the app
   that holds it (Prowlarr tests its applications, Radarr its download client…).
 - **plan / apply**: computes the links the apps should have, shows the diff, writes through the APIs
-  after confirmation. Objects arrglue creates carry an `arrglue` tag or `[arrglue]` prefix; what you
+  after confirmation. Objects arrglue creates are named with an `[arrglue]` prefix (never a tag: in Radarr, Sonarr and
+  Prowlarr a tag filters what the object applies to); what you
   set up by hand is reported and left alone unless `--adopt`. A stale key is detected by the app's
   own test and re-sent.
 - **serve**: daemon that rescans on Docker events and on a timer, with a web page and a JSON

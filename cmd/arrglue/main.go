@@ -126,7 +126,7 @@ func main() {
 		return nil
 	}}
 	for _, c := range []*cobra.Command{plan, apply} {
-		c.Flags().BoolVar(&adopt, "adopt", false, "take over equivalent objects created by hand (tags them arrglue)")
+		c.Flags().BoolVar(&adopt, "adopt", false, "take over equivalent objects created by hand (prefixes their name with [arrglue])")
 		c.Flags().StringVar(&only, "only", "", "limit to links whose names contain this text, e.g. jellyfin or prowlarr->radarr")
 	}
 	apply.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
