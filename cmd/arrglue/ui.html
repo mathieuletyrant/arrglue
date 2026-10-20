@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>arrglue</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #fff; --surface-2: #f0f2f5; --border: #e3e6eb;
+  --text: #1b1f24; --muted: #667080; --accent: #3b5bdb; --accent-text: #fff;
+  --ok: #2b8a3e; --ok-bg: #e6f4ea; --warn: #b26a00; --warn-bg: #fff4e0;
+  --err: #c92a2a; --err-bg: #fdecec; --info: #3b5bdb; --info-bg: #eaefff;
+  --radius: 10px; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115; --surface: #171a20; --surface-2: #1f232b; --border: #2a2f39;
+    --text: #e6e8eb; --muted: #8b94a3; --accent: #6d8cff; --accent-text: #0f1115;
+    --ok: #5cc27a; --ok-bg: #16281c; --warn: #f0b347; --warn-bg: #2b2213;
+    --err: #ff6b6b; --err-bg: #2e1617; --info: #8aa2ff; --info-bg: #1b2140;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 980px; margin: 0 auto; padding: 0 16px 120px; }
+
+header { display: flex; align-items: center; gap: 12px; padding: 20px 0 16px; flex-wrap: wrap; }
+header h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+header .self { color: var(--muted); font-size: 13px; }
+header .grow { flex: 1; }
+.when { color: var(--muted); font-size: 13px; }
+.btn { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 7px 14px; display: inline-flex; align-items: center; gap: 8px; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .55; cursor: default; filter: none; }
+.btn.small { padding: 3px 10px; font-size: 12px; }
+.spin { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; display: none; }
+.busy .spin { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.tile .n { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.tile .l { color: var(--muted); font-size: 12px; }
+.tile.accent .n { color: var(--accent); } .tile.bad .n { color: var(--err); } .tile.meh .n { color: var(--warn); } .tile.good .n { color: var(--ok); }
+@media (max-width: 640px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+
+.banner { border-radius: var(--radius); padding: 10px 14px; margin-bottom: 16px; border: 1px solid; }
+.banner.err { background: var(--err-bg); border-color: var(--err); color: var(--err); }
+.banner.ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.banner ul { margin: 6px 0 0; padding-left: 18px; color: var(--text); }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab { background: none; border: 0; padding: 10px 14px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 550; }
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.count { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--surface-2); font-size: 12px; margin-left: 6px; text-align: center; }
+
+.group { margin-bottom: 22px; }
+.group > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+.group > p { color: var(--muted); margin: 0 0 10px; font-size: 13px; }
+.list { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.item { display: flex; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--border); align-items: flex-start; }
+.item:first-child { border-top: 0; }
+.item input[type=checkbox] { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+.item .main { flex: 1; min-width: 0; }
+.item .title { font-weight: 600; overflow-wrap: anywhere; }
+.item .sub { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.item .msg { font-size: 13px; overflow-wrap: anywhere; margin-top: 2px; }
+.item .res { font-size: 13px; margin-top: 4px; font-weight: 550; }
+.item .res.ok { color: var(--ok); } .item .res.err { color: var(--err); }
+label.item { cursor: pointer; }
+label.item:hover { background: var(--surface-2); }
+
+.pill { font-size: 11px; font-weight: 650; padding: 1px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .03em; flex: none; }
+.pill.create, .pill.OK { background: var(--ok-bg); color: var(--ok); }
+.pill.update, .pill.WARN, .pill.manual { background: var(--warn-bg); color: var(--warn); }
+.pill.adopt { background: var(--info-bg); color: var(--info); }
+.pill.ERROR { background: var(--err-bg); color: var(--err); }
+.pill.skip, .pill.noop { background: var(--surface-2); color: var(--muted); }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; margin-top: 6px; }
+.dot.OK { background: var(--ok); } .dot.WARN { background: var(--warn); } .dot.ERROR { background: var(--err); }
+
+pre.diff { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border-radius: 6px; padding: 8px 10px; margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+details.more > summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 4px 0; list-style: none; }
+details.more > summary::before { content: "▸ "; } details.more[open] > summary::before { content: "▾ "; }
+details.more .list { margin-top: 6px; }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+.toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.toolbar label { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; cursor: pointer; }
+.toolbar .grow { flex: 1; }
+
+.bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--border); box-shadow: 0 -4px 16px rgba(0,0,0,.06); transform: translateY(110%); transition: transform .2s; }
+.bar.show { transform: none; }
+.bar .wrap { padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+.bar .grow { flex: 1; color: var(--muted); }
+footer { color: var(--muted); font-size: 12px; margin-top: 32px; }
+footer a { color: inherit; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>arrglue</h1>
+    <span class="self" id="self"></span>
+    <span class="grow"></span>
+    <span class="when" id="when"></span>
+    <button class="btn" id="rescan"><span class="spin"></span><span>Rescan</span></button>
+  </header>
+
+  <div class="tiles">
+    <div class="tile accent"><div class="n" id="t-pending">–</div><div class="l">changes to apply</div></div>
+    <div class="tile" id="tile-problems"><div class="n" id="t-problems">–</div><div class="l" id="t-problems-l">problems</div></div>
+    <div class="tile" id="tile-links"><div class="n" id="t-links">–</div><div class="l">links working</div></div>
+    <div class="tile"><div class="n" id="t-apps">–</div><div class="l">apps found</div></div>
+  </div>
+
+  <div id="banners"></div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-plan" aria-selected="true">Plan<span class="count" id="c-plan">0</span></button>
+    <button class="tab" role="tab" id="tab-health" aria-selected="false">Health<span class="count" id="c-health">0</span></button>
+  </div>
+
+  <section id="view-plan" role="tabpanel"></section>
+  <section id="view-health" role="tabpanel" hidden></section>
+
+  <footer>JSON: <a href="/v1/state">/v1/state</a> · <a href="/v1/services">/v1/services</a> · <a href="/v1/doctor">/v1/doctor</a> · <a href="/v1/plan">/v1/plan</a></footer>
+</div>
+
+<div class="bar" id="bar">
+  <div class="wrap">
+    <span class="grow" id="bar-text"></span>
+    <button class="btn" id="none">Clear</button>
+    <button class="btn primary" id="apply"><span class="spin"></span><span id="apply-text">Apply</span></button>
+  </div>
+</div>
+
+<script>
+"use strict";
+let data = null;
+const selected = new Set(); // keys of the changes ticked for apply
+const seen = new Set();     // keys already shown once: a new change gets its default tick
+const results = {};         // key -> {ok, error} from the last apply
+let tab = "plan", onlyProblems = true, applying = false, timer = null;
+
+const $ = (id) => document.getElementById(id);
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === false || v == null) continue;
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "checked") el.checked = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
+  return el;
+}
+
+const OPS = { create: "create", update: "update", adopt: "take over", manual: "manual", skip: "skipped", noop: "up to date" };
+const writes = (c) => c.op === "create" || c.op === "update" || c.op === "adopt";
+
+function ago(iso) {
+  if (!iso) return "never scanned";
+  const s = Math.round((Date.now() - new Date(iso)) / 1000);
+  if (s < 60) return "scanned just now";
+  if (s < 3600) return "scanned " + Math.round(s / 60) + " min ago";
+  return "scanned " + new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+async function load() {
+  try {
+    const r = await fetch("/v1/state", { cache: "no-store" });
+    data = await r.json();
+  } catch (e) {
+    data = data || { changes: [] };
+    data.error = "cannot reach arrglue: " + e.message;
+  }
+  for (const c of data.changes || []) {
+    if (seen.has(c.key)) continue;
+    seen.add(c.key);
+    if (c.op === "create" || c.op === "update") selected.add(c.key); // adopt stays opt-in
+  }
+  const keys = new Set((data.changes || []).filter(writes).map((c) => c.key));
+  for (const k of [...selected]) if (!keys.has(k)) selected.delete(k);
+  render();
+  clearTimeout(timer);
+  timer = setTimeout(load, data.scanning ? 2000 : 30000);
+}
+
+function render() {
+  const changes = data.changes || [];
+  const rep = data.report || { sections: [], errors: 0, warnings: 0 };
+  $("self").textContent = rep.self ? "runs as " + rep.self : "";
+  $("when").textContent = data.scanning ? "scanning…" : ago(data.last_cycle);
+  $("rescan").classList.toggle("busy", !!data.scanning);
+  $("rescan").disabled = !!data.scanning || applying;
+
+  const pending = changes.filter((c) => c.op === "create" || c.op === "update").length;
+  $("t-pending").textContent = pending;
+  const problems = rep.errors + rep.warnings;
+  $("t-problems").textContent = problems;
+  $("t-problems-l").textContent = rep.errors ? `problems (${rep.errors} error${rep.errors > 1 ? "s" : ""})` : "problems";
+  $("tile-problems").className = "tile " + (rep.errors ? "bad" : rep.warnings ? "meh" : "good");
+  const links = (rep.sections.find((s) => s.name === "LINKS") || { rows: [] }).rows;
+  const linksOK = links.filter((r) => r.level === "OK").length;
+  $("t-links").textContent = links.length ? `${linksOK}/${links.length}` : "–";
+  $("tile-links").className = "tile " + (!links.length ? "" : linksOK === links.length ? "good" : "meh");
+  $("t-apps").textContent = (rep.sections.find((s) => s.name === "APPS") || { rows: [] }).rows.length || "–";
+  $("c-plan").textContent = changes.filter((c) => writes(c) || c.op === "manual").length;
+  $("c-health").textContent = problems;
+
+  renderBanners();
+  renderPlan(changes);
+  renderHealth(rep);
+  renderBar();
+}
+
+function renderBanners() {
+  const out = [];
+  if (data.error) out.push(h("div", { class: "banner err" }, data.error));
+  const keys = Object.keys(results);
+  if (keys.length) {
+    const bad = keys.filter((k) => !results[k].ok);
+    const good = keys.length - bad.length;
+    if (bad.length) {
+      out.push(h("div", { class: "banner err" }, `${good} applied, ${bad.length} failed:`,
+        h("ul", {}, bad.map((k) => {
+          const [link, what] = k.split(" | ");
+          return h("li", {}, `${what} (${link.replace(" -> ", " → ")}): ${results[k].error}`);
+        }))));
+    } else {
+      out.push(h("div", { class: "banner ok" }, `${good} change${good > 1 ? "s" : ""} applied. ${data.scanning ? "Rescanning to check them…" : ""}`));
+    }
+  }
+  $("banners").replaceChildren(...out);
+}
+
+function diff(text) {
+  const lines = (text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.length ? h("pre", { class: "diff" }, lines.join("\n")) : null;
+}
+
+function changeItem(c, pickable) {
+  const res = results[c.key];
+  const body = h("div", { class: "main" },
+    h("div", { class: "title" }, c.what),
+    h("div", { class: "sub" }, c.link),
+    pickable ? diff(c.detail) : c.detail ? h("div", { class: "msg" }, c.detail) : null,
+    res ? h("div", { class: "res " + (res.ok ? "ok" : "err") }, res.ok ? "Applied" : "Failed: " + res.error) : null);
+  const pill = h("span", { class: "pill " + c.op }, OPS[c.op] || c.op);
+  if (!pickable) return h("div", { class: "item" }, body, pill);
+  const box = h("input", { type: "checkbox", checked: selected.has(c.key), disabled: applying, onchange: (e) => {
+    e.target.checked ? selected.add(c.key) : selected.delete(c.key);
+    renderBar();
+  } });
+  return h("label", { class: "item" }, box, body, pill);
+}
+
+function group(title, note, items, extra) {
+  return h("div", { class: "group" }, h("h2", {}, title, extra), note ? h("p", {}, note) : null, h("div", { class: "list" }, items));
+}
+
+function renderPlan(changes) {
+  const by = (op) => changes.filter((c) => c.op === op);
+  const todo = changes.filter((c) => c.op === "create" || c.op === "update");
+  const adopt = by("adopt"), manual = by("manual"), skip = by("skip"), same = by("noop");
+  const out = [];
+  if (!data.last_cycle && !changes.length) {
+    out.push(h("div", { class: "list" }, h("div", { class: "empty" }, data.scanning ? "First scan in progress…" : "Not scanned yet.")));
+  } else if (!todo.length && !adopt.length && !manual.length) {
+    out.push(h("div", { class: "list" }, h("div", { class: "empty" }, "Everything is wired as it should be. Nothing to apply.")));
+  }
+  if (todo.length) {
+    const all = todo.every((c) => selected.has(c.key));
+    out.push(group("To apply", "Links arrglue creates or repairs through the apps' APIs. Untick what you want to leave as it is.",
+      todo.map((c) => changeItem(c, true)),
+      h("button", { class: "btn small", disabled: applying, onclick: () => { todo.forEach((c) => all ? selected.delete(c.key) : selected.add(c.key)); render(); } }, all ? "Untick all" : "Tick all")));
+  }
+  if (adopt.length) {
+    out.push(group("Set up by hand", "These already exist but arrglue did not create them, so it leaves them alone. Tick one to let arrglue take it over: it renames it with the [arrglue] prefix and keeps it in sync from then on.",
+      adopt.map((c) => changeItem(c, true))));
+  }
+  if (manual.length) {
+    out.push(group("To do yourself", "Config files arrglue cannot write. Copy this into the app.",
+      manual.map((c) => h("div", { class: "item" }, h("div", { class: "main" },
+        h("div", { class: "title" }, c.what), h("div", { class: "sub" }, c.link), diff(c.detail),
+        h("button", { class: "btn small", style: "margin-top:8px", onclick: (e) => copy(c.detail, e.target) }, "Copy")), h("span", { class: "pill manual" }, "manual")))));
+  }
+  if (skip.length) {
+    out.push(h("details", { class: "more group" }, h("summary", {}, `${skip.length} skipped (arrglue cannot set these up yet)`),
+      h("div", { class: "list" }, skip.map((c) => changeItem(c, false)))));
+  }
+  if (same.length) {
+    out.push(h("details", { class: "more group" }, h("summary", {}, `${same.length} already up to date`),
+      h("div", { class: "list" }, same.map((c) => changeItem(c, false)))));
+  }
+  $("view-plan").replaceChildren(...out);
+}
+
+async function copy(text, btn) {
+  try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
+  catch { btn.textContent = "Select the text to copy"; }
+}
+
+const SECTIONS = {
+  APPS: "Apps", ROUTES: "Routes between apps", PATHS: "Download and library folders", LINKS: "Links, tested by the apps themselves",
+};
+const RANK = { ERROR: 0, WARN: 1, OK: 2 };
+
+function renderHealth(rep) {
+  const out = [];
+  const problems = rep.errors + rep.warnings;
+  out.push(h("div", { class: "toolbar" },
+    h("label", {}, h("input", { type: "checkbox", checked: onlyProblems, onchange: (e) => { onlyProblems = e.target.checked; render(); } }), "Problems only"),
+    h("span", { class: "grow" })));
+  for (const s of rep.sections || []) {
+    const rows = [...s.rows].sort((a, b) => RANK[a.level] - RANK[b.level]);
+    const shown = onlyProblems ? rows.filter((r) => r.level !== "OK") : rows;
+    const ok = rows.length - rows.filter((r) => r.level !== "OK").length;
+    const items = shown.map((r) => {
+      const [first, ...rest] = r.cols;
+      const parts = rest.filter((c) => c && c !== "-");
+      const msg = parts.pop();
+      return h("div", { class: "item" }, h("span", { class: "dot " + r.level }),
+        h("div", { class: "main" }, h("div", { class: "title" }, first), parts.length ? h("div", { class: "sub" }, parts.join(" · ")) : null, msg ? h("div", { class: "msg" }, msg) : null),
+        h("span", { class: "pill " + r.level }, r.level === "WARN" ? "warning" : r.level === "ERROR" ? "error" : "ok"));
+    });
+    if (!items.length) items.push(h("div", { class: "empty" }, rows.length ? `All ${ok} OK` : "Nothing to check"));
+    out.push(group(SECTIONS[s.name] || s.name, s.title, items, h("span", { class: "count" }, `${ok}/${rows.length} OK`)));
+  }
+  if (!rep.sections || !rep.sections.length) out.push(h("div", { class: "list" }, h("div", { class: "empty" }, "Not scanned yet.")));
+  if (!problems && rep.sections && rep.sections.length) out.splice(1, 0, h("div", { class: "banner ok" }, "No problem found."));
+  $("view-health").replaceChildren(...out);
+}
+
+function renderBar() {
+  const n = selected.size;
+  $("bar").classList.toggle("show", n > 0 || applying);
+  $("bar-text").textContent = applying ? "Applying, then rescanning…" : `${n} change${n > 1 ? "s" : ""} selected`;
+  $("apply-text").textContent = applying ? "Applying…" : `Apply ${n}`;
+  $("apply").classList.toggle("busy", applying);
+  $("apply").disabled = applying || !n;
+  $("none").disabled = applying;
+}
+
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  if (!r.ok) throw new Error((await r.text()).trim() || r.statusText);
+  return r.json();
+}
+
+$("apply").onclick = async () => {
+  const keys = [...selected];
+  if (!keys.length || !confirm(`Write ${keys.length} change${keys.length > 1 ? "s" : ""} to your apps?`)) return;
+  applying = true;
+  for (const k of Object.keys(results)) delete results[k];
+  render();
+  try {
+    for (const r of await post("/v1/apply", { keys })) {
+      results[r.key] = r;
+      if (r.ok) selected.delete(r.key);
+    }
+  } catch (e) {
+    data.error = "apply failed: " + e.message;
+  }
+  applying = false;
+  load();
+};
+$("none").onclick = () => { selected.clear(); render(); };
+$("rescan").onclick = async () => {
+  for (const k of Object.keys(results)) delete results[k];
+  try { await post("/v1/scan"); } catch (e) { data.error = "rescan failed: " + e.message; }
+  load();
+};
+for (const name of ["plan", "health"]) {
+  $("tab-" + name).onclick = () => {
+    tab = name;
+    for (const n of ["plan", "health"]) {
+      $("tab-" + n).setAttribute("aria-selected", n === tab);
+      $("view-" + n).hidden = n !== tab;
+    }
+  };
+}
+setInterval(() => data && !data.scanning && ($("when").textContent = ago(data.last_cycle)), 30000);
+load();
+</script>
+</body>
+</html>
