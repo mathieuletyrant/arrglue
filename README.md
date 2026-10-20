@@ -32,7 +32,8 @@ LINKS   what the apps have configured, tested by the apps themselves
   Prowlarr a tag filters what the object applies to); what you
   set up by hand is reported and left alone unless `--adopt`. A stale key is detected by the app's
   own test and re-sent.
-- **serve**: daemon that rescans on Docker events and on a timer, with a web page and a JSON
+- **serve**: daemon that rescans on Docker events and on a timer, with a web UI (rescan, tick
+  the changes to apply, take over hand-made objects one by one, health checks) and a JSON
   registry: `GET /v1/services/radarr_server_1?for=prowlarr_server_1` answers with the URL that
   caller should use, and the key for the bearer of `ARRGLUE_TOKEN`.
 
@@ -71,12 +72,9 @@ arrglue cannot read itself go in `~/umbrel/app-data/mathieu-arrglue/data/secrets
 mathieu-healarr_server_1: <Healarr → Config → API key>
 ```
 
-To write, from Settings → Advanced → Terminal:
-
-```sh
-docker exec mathieu-arrglue_server_1 /arrglue plan
-docker exec mathieu-arrglue_server_1 /arrglue apply --adopt --yes
-```
+Open the app: the **Plan** tab lists what arrglue would change; tick what you want and press
+**Apply**. The CLI is still there from Settings → Advanced → Terminal:
+`docker exec mathieu-arrglue_server_1 /arrglue plan`.
 
 ### Docker
 
@@ -114,14 +112,19 @@ Flags: `--catalog <dir>` overrides catalog entries, `--secrets <file>` hands ove
 
 | Endpoint | Returns |
 |---|---|
-| `GET /` | web page: last doctor report and plan, refreshed every minute |
+| `GET /` | web UI |
+| `GET /v1/state` | everything the web UI shows: last cycle, scanning or not, report, plan |
+| `POST /v1/scan` | rescan now (202) |
+| `POST /v1/apply` | `{"keys": [...]}`, keys from the plan: plans again and writes those still in it |
 | `GET /v1/services` | discovered apps and the URL arrglue reaches them at |
 | `GET /v1/services/{id-or-name}?for=<caller>` | the URL *that caller* should use, verified or not |
 | `GET /v1/doctor`, `GET /v1/plan` | last doctor report and plan, as JSON |
 | `GET /v1/status`, `GET /healthz` | last cycle time and counts |
 
 The `api_key` field is only included with `Authorization: Bearer $ARRGLUE_TOKEN`. Nothing is
-written unless `serve --auto-apply`. Keep the port on your internal network: arrglue holds every
+written unless someone applies from the web UI (or `POST /v1/apply`), or with `serve --auto-apply`,
+which never takes over a hand-made object without `--adopt`. The POST endpoints only take JSON
+from the page's own origin, so another site cannot make your browser call them. Keep the port on your internal network: arrglue holds every
 key of the stack.
 
 ## How it decides
