@@ -1,6 +1,6 @@
 // Package connector knows how to create and maintain one kind of link between
-// two apps through their APIs. Every object it creates carries the `arrglue`
-// tag; equivalent objects created by hand are reported, never touched.
+// two apps through their APIs. Every object it creates is named with the
+// `[arrglue] ` prefix; equivalent objects created by hand are reported, never touched.
 package connector
 
 import (
@@ -22,7 +22,13 @@ import (
 	"github.com/mathieuletyrant/arrglue/internal/graph"
 )
 
-const Tag = "arrglue"
+// Prefix marks the Servarr objects arrglue owns. Not a tag: in Servarr a tag
+// filters (an application syncs only indexers with its tags, a download client
+// or notification serves only movies/series with them).
+const Prefix = "[arrglue] "
+
+// legacyTag is the tag that marked ownership before Prefix; arrglue removes it.
+const legacyTag = "arrglue"
 
 // Pending is a Test error that is a warning, not a failure: the link cannot
 // be configured yet for a reason the user has to act on.
@@ -37,7 +43,7 @@ type Env struct {
 	// from == nil means "from arrglue itself" (used to read/write APIs).
 	URL   func(from, to *graph.Instance) string
 	Dirs  map[string][]string // instance ID -> dirs it uses (see paths.Dirs)
-	Adopt bool                // take over equivalent objects that lack the arrglue tag
+	Adopt bool                // take over equivalent objects created by hand
 }
 
 type Change struct {
@@ -264,25 +270,30 @@ func (a api) form(ctx context.Context, path string, values url.Values) error {
 	return nil
 }
 
-// tagID looks up the arrglue tag; creates it when create is true. -1 if absent.
-func (a api) tagID(ctx context.Context, create bool) (float64, error) {
+// legacyTagID looks up the old ownership tag. -1 if absent.
+func (a api) legacyTagID(ctx context.Context) (float64, error) {
 	var tags []obj
 	if err := a.do(ctx, "GET", "/tag", nil, &tags); err != nil {
 		return -1, err
 	}
 	for _, t := range tags {
-		if t["label"] == Tag {
+		if t["label"] == legacyTag {
 			return t["id"].(float64), nil
 		}
 	}
-	if !create {
-		return -1, nil
+	return -1, nil
+}
+
+// withoutTag returns o's tags minus id.
+func (o obj) withoutTag(id float64) []any {
+	ts, _ := o["tags"].([]any)
+	out := []any{}
+	for _, t := range ts {
+		if t != id {
+			out = append(out, t)
+		}
 	}
-	var t obj
-	if err := a.do(ctx, "POST", "/tag", obj{"label": Tag}, &t); err != nil {
-		return -1, err
-	}
-	return t["id"].(float64), nil
+	return out
 }
 
 // schema returns the API's template object for an implementation.
@@ -308,21 +319,35 @@ func (t *servarrTarget) upsert(ctx context.Context, adopt bool) ([]Change, error
 	if err != nil {
 		return nil, err
 	}
-	tag, err := a.tagID(ctx, false)
+	tag, err := a.legacyTagID(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if o != nil {
+		name := fmt.Sprint(o["name"])
+		legacy := o.hasTag(tag)
 		op, force, why := "update", false, ""
-		if !o.hasTag(tag) {
-			if !adopt {
-				return []Change{{Link: link, Op: "skip", What: what, Detail: fmt.Sprintf("%q exists without the %s tag", o["name"], Tag)}}, nil
-			}
-			op, force = "adopt", true
-		} else if err := t.testObj(ctx, o); err != nil {
-			force, why = true, "  (re-sent: fails its test: "+err.Error()+")"
+		var d []string
+		if legacy {
+			o["tags"] = o.withoutTag(tag)
+			d = append(d, "  tags: drop "+legacyTag+" (a Servarr tag filters what the object applies to)")
 		}
-		diff := t.Fill(o, force)
+		if !strings.HasPrefix(name, Prefix) {
+			if !legacy && !adopt {
+				return []Change{{Link: link, Op: "skip", What: what, Detail: fmt.Sprintf("%q was set up by hand; --adopt takes it over", name)}}, nil
+			}
+			if !legacy {
+				op, force = "adopt", true
+			}
+			o["name"] = Prefix + name
+			d = append(d, fmt.Sprintf("  name: %s -> %s", name, o["name"]))
+		}
+		if op == "update" {
+			if err := t.testObj(ctx, o); err != nil {
+				force, why = true, "  (re-sent: fails its test: "+err.Error()+")"
+			}
+		}
+		diff := append(d, t.Fill(o, force)...)
 		if op == "update" && len(diff) == 0 {
 			return []Change{{Link: link, Op: "noop", What: what}}, nil
 		}
@@ -331,14 +356,6 @@ func (t *servarrTarget) upsert(ctx context.Context, adopt bool) ([]Change, error
 		}
 		id := strings.TrimSuffix(fmt.Sprint(o["id"]), ".0")
 		return []Change{{Link: link, Op: op, What: what, Detail: strings.Join(diff, "\n"), Apply: func(ctx context.Context) error {
-			if op == "adopt" {
-				tag, err := a.tagID(ctx, true)
-				if err != nil {
-					return err
-				}
-				ts, _ := o["tags"].([]any)
-				o["tags"] = append(ts, tag)
-			}
 			return a.do(ctx, "PUT", t.Path+"/"+id, o, nil)
 		}}}, nil
 	}
@@ -347,13 +364,15 @@ func (t *servarrTarget) upsert(ctx context.Context, adopt bool) ([]Change, error
 		return nil, err
 	}
 	diff := t.Fill(o, true)
+	for i, l := range diff {
+		if l == "  name: "+fmt.Sprint(o["name"]) {
+			diff[i] = "  name: " + Prefix + fmt.Sprint(o["name"])
+		}
+	}
+	o["name"] = Prefix + fmt.Sprint(o["name"])
+	o["tags"] = []any{}
 	sort.Strings(diff)
 	return []Change{{Link: link, Op: "create", What: what, Detail: strings.Join(diff, "\n"), Apply: func(ctx context.Context) error {
-		tag, err := a.tagID(ctx, true)
-		if err != nil {
-			return err
-		}
-		o["tags"] = []any{tag}
 		return a.do(ctx, "POST", t.Path, o, nil)
 	}}}, nil
 }

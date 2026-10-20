@@ -157,7 +157,7 @@ type Connector interface {
 }
 ```
 
-Propriété. Tout objet créé porte un marqueur : un tag `arrglue` quand l'API gère les tags, sinon un nom préfixé `[arrglue]`. Un objet équivalent créé à la main est signalé, jamais modifié, sauf option `--adopt`.
+Propriété. Tout objet créé porte un nom préfixé `[arrglue]`. Jamais un tag : dans Radarr, Sonarr et Prowlarr un tag filtre (une application ne synchronise que les indexeurs qui ont son tag, un client de téléchargement ou une notification ne sert que les films/séries qui l'ont). Le tag `arrglue` des versions précédentes est retiré au prochain apply. Un objet équivalent créé à la main est signalé, jamais modifié, sauf option `--adopt`.
 
 | Connecteur | Objet créé | Points d'attention |
 |---|---|---|
